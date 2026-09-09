@@ -10,6 +10,10 @@ import {
 } from "@/lib/testProgress";
 import type { InProgressAttempt } from "@/types/testProgress";
 import { prepareResultSnapshot } from "@/lib/resultSnapshot";
+import {
+  clearRetryRequest, hasRetryRequest, trackAnswer, trackBack, trackQuestionView,
+  trackRetry, trackTestComplete, trackTestStart,
+} from "@/lib/testAnalytics";
 
 const buttonClass = "min-h-12 rounded-lg border border-slate-400 px-5 py-3 font-semibold focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 disabled:cursor-not-allowed disabled:opacity-40";
 const primaryClass = `${buttonClass} border-blue-700 bg-blue-700 text-white hover:bg-blue-800`;
@@ -25,12 +29,15 @@ export default function TestRunner() {
   const completionLock = useRef(false);
   const restartButton = useRef<HTMLButtonElement>(null);
   const cancelButton = useRef<HTMLButtonElement>(null);
+  const lastQuestionView = useRef<string | null>(null);
 
-  const startNew = useCallback((message = "") => {
+  const startNew = useCallback((message = "", isRetry = false) => {
     try {
       const next = createAttempt(crypto.randomUUID());
       // 한 번의 저장으로 과거 답변을 새 빈 상태로 교체합니다.
       saveAttempt(window.localStorage, next);
+      clearRetryRequest();
+      trackTestStart(next, isRetry);
       setProgress(next);
       setScreen("questions");
       setConfirmRestart(false);
@@ -47,7 +54,9 @@ export default function TestRunner() {
     try {
       const restored = restoreAttempt(window.localStorage.getItem(TEST_STORAGE_KEY));
       setError("");
-      if (restored.kind === "in_progress") {
+      if (hasRetryRequest()) {
+        startNew("", true);
+      } else if (restored.kind === "in_progress") {
         setProgress(restored.progress);
         setScreen("resume");
       } else {
@@ -58,7 +67,7 @@ export default function TestRunner() {
           invalid: "이전 진행 상태를 복원할 수 없어 새 테스트를 시작합니다.",
           empty: "", completed: "",
         };
-        startNew(messages[restored.kind]);
+        startNew(messages[restored.kind], restored.kind === "completed");
       }
     } catch {
       setError("저장된 진행 상태를 읽지 못했습니다. 브라우저 저장 공간을 허용한 뒤 다시 시도해주세요.");
@@ -87,6 +96,15 @@ export default function TestRunner() {
   }, [screen, progress?.currentQuestionIndex, confirmRestart]);
 
   useEffect(() => {
+    const visible = screen === "questions" && !confirmRestart && !isNavigating;
+    const viewKey = visible && progress ? `${progress.attemptId}:${progress.currentQuestionIndex}` : null;
+    if (viewKey && viewKey !== lastQuestionView.current && progress) {
+      trackQuestionView(progress, progress.currentQuestionIndex);
+    }
+    lastQuestionView.current = viewKey;
+  }, [screen, confirmRestart, isNavigating, progress]);
+
+  useEffect(() => {
     if (confirmRestart) cancelButton.current?.focus();
   }, [confirmRestart]);
 
@@ -104,14 +122,19 @@ export default function TestRunner() {
       saveAttempt(window.localStorage, next);
       setProgress(next);
       setError("");
+      return true;
     } catch {
       // 저장 실패 시 화면도 다음 단계로 넘기지 않아 저장값과 화면을 일치시킵니다.
       setError("진행 상태를 저장하지 못했습니다. 저장 공간을 확인한 뒤 같은 선택이나 이동을 다시 시도해주세요.");
+      return false;
     }
   }
 
   function handleSelect(choiceId: string) {
-    if (!completionLock.current && progress && ensureFresh()) commit(selectAnswer(progress, choiceId));
+    if (!completionLock.current && progress && ensureFresh()) {
+      const saved = commit(selectAnswer(progress, choiceId));
+      trackAnswer(progress, choiceId, saved);
+    }
   }
 
   function handleNext() {
@@ -126,6 +149,7 @@ export default function TestRunner() {
       // 계산과 완료 상태 저장이 모두 성공해야 /result로 이동합니다.
       saveAttempt(window.localStorage, completed.progress);
       prepareResultSnapshot(completed.progress, completed.result);
+      trackTestComplete(completed.progress, completed.result);
       setIsNavigating(true);
       setError("");
       router.push("/result");
@@ -163,7 +187,10 @@ export default function TestRunner() {
                 setConfirmRestart(false);
                 requestAnimationFrame(() => restartButton.current?.focus());
               }}>취소</button>
-              <button type="button" className={primaryClass} onClick={() => startNew()}>다시 시작</button>
+              <button type="button" className={primaryClass} onClick={() => {
+                if (progress) trackRetry(progress);
+                startNew("", true);
+              }}>다시 시작</button>
             </div>
           </section>
         ) : screen === "loading" ? (
@@ -194,7 +221,10 @@ export default function TestRunner() {
             {screen === "questions" && (
               <nav aria-label="문항 이동" className="grid grid-cols-2 gap-3">
                 <button type="button" className={buttonClass} disabled={isNavigating || progress.currentQuestionIndex === 0} onClick={() => {
-                  if (ensureFresh()) commit(moveQuestion(progress, -1));
+                  if (ensureFresh()) {
+                    const next = moveQuestion(progress, -1);
+                    if (commit(next)) trackBack(progress, next.currentQuestionIndex);
+                  }
                 }}>이전</button>
                 <button type="button" className={primaryClass} disabled={isNavigating || !canGoNext(progress)} onClick={handleNext}>
                   {progress.currentQuestionIndex === total - 1 ? "결과 보기" : "다음"}

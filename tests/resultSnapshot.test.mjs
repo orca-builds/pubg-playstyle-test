@@ -190,6 +190,7 @@ function completionHandler({ failSave = false } = {}) {
       events.push("prepare");
       store.prepareResultSnapshot(attempt, result);
     },
+    trackTestComplete: loadSource("src/lib/testAnalytics.ts").trackTestComplete,
     setIsNavigating: () => {}, setError: () => {},
     router: { push: (href) => {
       assert.equal(href, "/result");
