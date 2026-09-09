@@ -59,7 +59,7 @@ export default function ResultContent({ snapshot, onStartTest, onRetryLoad }: Pr
         <p className="text-lg leading-relaxed font-semibold text-slate-800">{mainResult.summary}</p>
       </div>
 
-      <p className="whitespace-pre-line leading-7 text-slate-600">{mainResult.description}</p>
+      <p className="whitespace-normal leading-7 text-slate-600 [overflow-wrap:anywhere]">{mainResult.description}</p>
       <MainAxisBars percentages={mainPercentages} />
 
       <div className="space-y-3 border-t border-slate-200 pt-6">

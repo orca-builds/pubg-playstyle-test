@@ -179,7 +179,7 @@ export default function TestRunner() {
         ) : progress && question ? (
           <>
             <div className="space-y-2">
-              <p aria-live="polite" className="font-semibold">{progress.currentQuestionIndex + 1} / {total}</p>
+              <p aria-live="polite" className="font-semibold">문항 {progress.currentQuestionIndex + 1} / {total}</p>
               <progress aria-label="답변 완료 진행률" value={progress.answers.length} max={total} className="h-3 w-full accent-blue-700" />
               <p className="text-sm text-slate-600">{progress.answers.length}개 답변 완료</p>
             </div>
