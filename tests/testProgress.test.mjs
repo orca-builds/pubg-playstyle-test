@@ -68,7 +68,7 @@ test("선택 없이 다음 진행 불가, 선택만으로 자동 이동하지 �
   const original = start();
   assert.equal(canGoNext(original), false);
   assert.deepEqual(moveQuestion(original, 1), original);
-  const selected = selectAnswer(original, "q01-a");
+  const selected = selectAnswer(original, "q01-choice-1");
   assert.equal(selected.currentQuestionIndex, 0);
   assert.equal(canGoNext(selected), true);
   assert.equal(moveQuestion(selected, 1).currentQuestionIndex, 1);
@@ -76,19 +76,19 @@ test("선택 없이 다음 진행 불가, 선택만으로 자동 이동하지 �
 });
 
 test("이전 답변 유지 및 변경은 누적이 아닌 교체", () => {
-  const original = selectAnswer(start(), "q01-a");
+  const original = selectAnswer(start(), "q01-choice-1");
   const back = moveQuestion(moveQuestion(original, 1), -1);
   assert.deepEqual(back.answers, original.answers);
-  const changed = selectAnswer(back, "q01-b");
-  assert.deepEqual(changed.answers, [{ questionId: "q01", choiceId: "q01-b" }]);
-  assert.equal(original.answers[0].choiceId, "q01-a");
+  const changed = selectAnswer(back, "q01-choice-2");
+  assert.deepEqual(changed.answers, [{ questionId: "q01", choiceId: "q01-choice-2" }]);
+  assert.equal(original.answers[0].choiceId, "q01-choice-1");
   assert.equal(changed.attemptId, original.attemptId);
   assert.equal(changed.startedAt, original.startedAt);
 });
 
 test("localStorage 직렬화·재복원은 위치, 답변, 시작 시간, attemptId 보존", () => {
   const storage = memoryStorage();
-  const progress = moveQuestion(selectAnswer(start(), "q01-b"), 1);
+  const progress = moveQuestion(selectAnswer(start(), "q01-choice-2"), 1);
   saveAttempt(storage, progress);
   const reloaded = restoreAttempt(storage.getItem(TEST_STORAGE_KEY), now + 1000);
   assert.equal(reloaded.kind, "in_progress");
@@ -141,11 +141,11 @@ test("손상 JSON, 잘못된 index·시간·질문·선택지·중복·빈 구�
     { ...start(), startedAt: "invalid-date" },
     { ...start(), startedAt: new Date(now + 1).toISOString() },
     { ...start(), attemptId: "" },
-    { ...start(), answers: [{ questionId: "q99", choiceId: "q99-a" }] },
-    { ...start(), answers: [{ questionId: "q01", choiceId: "q16-a" }] },
-    { ...start(), answers: [{ questionId: "q01", choiceId: "q01-a" }, { questionId: "q01", choiceId: "q01-b" }] },
+    { ...start(), answers: [{ questionId: "q99", choiceId: "q99-choice-1" }] },
+    { ...start(), answers: [{ questionId: "q01", choiceId: "q16-choice-1" }] },
+    { ...start(), answers: [{ questionId: "q01", choiceId: "q01-choice-1" }, { questionId: "q01", choiceId: "q01-choice-2" }] },
     { ...start(), currentQuestionIndex: 1 },
-    { ...start(), answers: [{ questionId: "q16", choiceId: "q16-a" }] },
+    { ...start(), answers: [{ questionId: "q16", choiceId: "q16-choice-1" }] },
   ]) assert.equal(restore(data).kind, "invalid");
 });
 
@@ -155,7 +155,7 @@ test("마지막 미응답이면 완료 불가, 최종 답변 24개를 scoring에
   assert.equal(canGoNext({ ...progress, answers: progress.answers.slice(0, -1) }), false);
   assert.throws(() => finishAttempt({ ...progress, answers: progress.answers.slice(0, -1) }, now), /모든 질문/);
   for (let i = 0; i < 23; i++) progress = moveQuestion(progress, -1);
-  progress = selectAnswer(progress, "q01-b");
+  progress = selectAnswer(progress, "q01-choice-2");
   for (let i = 0; i < 23; i++) progress = moveQuestion(progress, 1);
   let received;
   const completed = finishAttempt(progress, now + 1000, (answers) => {
@@ -208,4 +208,35 @@ test("선택지 원문, 버튼 전체의 선택 상태와 체크 표시", () => 
   assert.equal((html.match(/aria-pressed="true"/g) ?? []).length, 1);
   assert.ok(html.includes("✓ 선택됨"));
   assert.ok(html.includes('type="button"'));
+});
+
+test("진행 중·완료 저장값의 legacy/잘못된 ID는 예외 없이 복원을 거부", () => {
+  const completed = finishAttempt(answerAll(), now).progress;
+  for (const progress of [selectAnswer(start(), "q01-choice-1"), completed]) {
+    for (const choiceId of ["q01-a", "q01-b", "q01-choice-3"]) {
+      const storage = memoryStorage();
+      saveAttempt(storage, { ...progress, answers: [
+        { questionId: "q01", choiceId }, ...progress.answers.slice(1),
+      ] });
+      assert.deepEqual(restoreAttempt(storage.getItem(TEST_STORAGE_KEY), now), { kind: "invalid" });
+      const fresh = createAttempt("retry-after-invalid", now);
+      saveAttempt(storage, selectAnswer(fresh, "q01-choice-2"));
+      assert.equal(restoreAttempt(storage.getItem(TEST_STORAGE_KEY), now).kind, "in_progress");
+    }
+  }
+});
+
+test("A/B는 표시 위치에서 생성하고 클릭은 고정 내부 ID를 전달", () => {
+  for (const question of orderedQuestions) {
+    const selected = [];
+    const tree = QuestionCard({ question, onSelect: id => selected.push(id) });
+    const buttons = tree.props.children[1].props.children;
+    buttons.forEach((button, index) => {
+      const label = renderToStaticMarkup(button.props.children[0]);
+      assert.ok(label.includes(index === 0 ? ">A.</span>" : ">B.</span>"));
+      assert.equal(button.props.children[1].props.children, question.choices[index].text);
+      button.props.onClick();
+    });
+    assert.deepEqual(selected, [`${question.id}-choice-1`, `${question.id}-choice-2`]);
+  }
 });

@@ -225,6 +225,30 @@ function renderResult(snapshot) {
   }));
 }
 
+test("legacy 완료 기록은 이전 캐시 대신 invalid 안내, 새 테스트 완료 후 정상 복구", () => {
+  const done = complete("before-legacy");
+  saveAttempt(window.localStorage, done.progress);
+  store.prepareResultSnapshot(done.progress, done.result);
+  for (const choiceId of ["q01-a", "q01-b", "q01-choice-3"]) {
+    saveAttempt(window.localStorage, { ...done.progress, answers: [
+      { questionId: "q01", choiceId }, ...done.progress.answers.slice(1),
+    ] });
+    assert.deepEqual(store.getResultSnapshot(), { status: "invalid" });
+    store.retryResultSnapshot();
+    assert.deepEqual(store.getResultSnapshot(), { status: "invalid" });
+    assert.ok(renderResult(store.getResultSnapshot()).includes("저장된 결과가 유효하지 않습니다."));
+  }
+  saveAttempt(window.localStorage, createAttempt("retry-new"));
+  assert.equal(store.getResultSnapshot().status, "missing");
+  const retried = complete("retry-new", 1);
+  saveAttempt(window.localStorage, retried.progress);
+  store.prepareResultSnapshot(retried.progress, retried.result);
+  store.retryResultSnapshot();
+  assert.deepEqual(store.getResultSnapshot(), {
+    status: "ready", attemptId: "retry-new", result: retried.result,
+  });
+});
+
 test("16개 유형의 이름·summary·description을 원문 그대로 표시", () => {
   const done = complete("content");
   for (const result of Object.values(resultTypes)) {

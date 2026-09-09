@@ -15,7 +15,7 @@ import type { TestAnswer } from "@/lib/scoring";
 
 // 실제 호출 시에는 q01~q24에 각각 하나씩 선택한 답변 24개를 전달합니다.
 const answers: TestAnswer[] = [
-  { questionId: "q01", choiceId: "q01-a" },
+  { questionId: "q01", choiceId: "q01-choice-1" },
   // ... 나머지 문항의 답변
 ];
 

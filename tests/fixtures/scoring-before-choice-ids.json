@@ -1,0 +1,362 @@
+[
+  {
+    "name": "all-A",
+    "choiceIndexes": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "expected": {
+      "testVersion": "v1",
+      "mainScores": {
+        "combat": 5,
+        "position": 0,
+        "frontline": 5,
+        "support": 0,
+        "pressure": 5,
+        "design": 0,
+        "risk": 5,
+        "safe": 0
+      },
+      "mainPercentages": {
+        "combat": 100,
+        "position": 0,
+        "frontline": 100,
+        "support": 0,
+        "pressure": 100,
+        "design": 0,
+        "risk": 100,
+        "safe": 0
+      },
+      "mainTraits": {
+        "combatPosition": "combat",
+        "frontlineSupport": "frontline",
+        "pressureDesign": "pressure",
+        "riskSafe": "risk"
+      },
+      "mainResult": {
+        "id": "combat-frontline-pressure-risk",
+        "name": "화끈한 돌격대장",
+        "summary": "싸움이 보이면 직접 판을 열고 빠르게 승부를 보는 플레이어",
+        "imageSrc": null,
+        "imageAlt": "화끈한 돌격대장 캐릭터 이미지",
+        "description": "교전 기회가 보이면 먼저 판을 열고 팀에서도 앞라인을 맡는 걸 좋아합니다.\n빠르게 거리를 좁혀 상대에게 생각할 시간을 주지 않고, 이득이 보이면 위험도 과감하게 감수하는 스타일입니다.",
+        "mainTraits": {
+          "combatPosition": "combat",
+          "frontlineSupport": "frontline",
+          "pressureDesign": "pressure",
+          "riskSafe": "risk"
+        }
+      },
+      "subScores": {
+        "mainBody": 2,
+        "flank": 0,
+        "hotdrop": 2,
+        "tail": 0,
+        "fullLoot": 2,
+        "fastLoot": 0,
+        "center": 1,
+        "edge": 0,
+        "standardGear": 1,
+        "specialGear": 0
+      },
+      "subAxes": {
+        "mainBodyFlank": {
+          "bias": 1,
+          "direction": "mainBody",
+          "strength": "strong",
+          "label": "본대형"
+        },
+        "hotdropTail": {
+          "bias": 1,
+          "direction": "hotdrop",
+          "strength": "strong",
+          "label": "대꼴형"
+        },
+        "fullLootFastLoot": {
+          "bias": 1,
+          "direction": "fullLoot",
+          "strength": "strong",
+          "label": "풀세팅형"
+        },
+        "centerEdge": {
+          "bias": 1,
+          "direction": "center",
+          "strength": "strong",
+          "label": "중앙 선점형"
+        },
+        "standardGearSpecialGear": {
+          "bias": 1,
+          "direction": "standardGear",
+          "strength": "strong",
+          "label": "기본기 충실형"
+        }
+      },
+      "displaySubTags": [
+        "본대형",
+        "대꼴형"
+      ]
+    }
+  },
+  {
+    "name": "all-B",
+    "choiceIndexes": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "expected": {
+      "testVersion": "v1",
+      "mainScores": {
+        "combat": 0,
+        "position": 5,
+        "frontline": 0,
+        "support": 5,
+        "pressure": 0,
+        "design": 5,
+        "risk": 0,
+        "safe": 5
+      },
+      "mainPercentages": {
+        "combat": 0,
+        "position": 100,
+        "frontline": 0,
+        "support": 100,
+        "pressure": 0,
+        "design": 100,
+        "risk": 0,
+        "safe": 100
+      },
+      "mainTraits": {
+        "combatPosition": "position",
+        "frontlineSupport": "support",
+        "pressureDesign": "design",
+        "riskSafe": "safe"
+      },
+      "mainResult": {
+        "id": "position-support-design-safe",
+        "name": "스쿼드 참모총장",
+        "summary": "정보와 위치를 보며 팀 전체의 흐름을 안정적으로 관리하는 플레이어",
+        "imageSrc": null,
+        "imageAlt": "스쿼드 참모총장 캐릭터 이미지",
+        "description": "좋은 위치, 정보, 팀원 상태를 함께 보며 전체 흐름을 안정적으로 관리하려 합니다.\n직접 판을 흔들기보다는 팀원들이 편하게 싸울 수 있는 상황을 차근차근 만드는 스타일입니다.",
+        "mainTraits": {
+          "combatPosition": "position",
+          "frontlineSupport": "support",
+          "pressureDesign": "design",
+          "riskSafe": "safe"
+        }
+      },
+      "subScores": {
+        "mainBody": 0,
+        "flank": 2,
+        "hotdrop": 0,
+        "tail": 2,
+        "fullLoot": 0,
+        "fastLoot": 2,
+        "center": 0,
+        "edge": 1,
+        "standardGear": 0,
+        "specialGear": 2
+      },
+      "subAxes": {
+        "mainBodyFlank": {
+          "bias": 1,
+          "direction": "flank",
+          "strength": "strong",
+          "label": "날개형"
+        },
+        "hotdropTail": {
+          "bias": 1,
+          "direction": "tail",
+          "strength": "strong",
+          "label": "꼬리형"
+        },
+        "fullLootFastLoot": {
+          "bias": 1,
+          "direction": "fastLoot",
+          "strength": "strong",
+          "label": "실속 파밍형"
+        },
+        "centerEdge": {
+          "bias": 1,
+          "direction": "edge",
+          "strength": "strong",
+          "label": "외곽 운영형"
+        },
+        "standardGearSpecialGear": {
+          "bias": 1,
+          "direction": "specialGear",
+          "strength": "strong",
+          "label": "보따리형"
+        }
+      },
+      "displaySubTags": [
+        "날개형",
+        "꼬리형"
+      ]
+    }
+  },
+  {
+    "name": "mixed-alternating",
+    "choiceIndexes": [
+      0,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      1
+    ],
+    "expected": {
+      "testVersion": "v1",
+      "mainScores": {
+        "combat": 3,
+        "position": 2,
+        "frontline": 2,
+        "support": 3,
+        "pressure": 3,
+        "design": 2,
+        "risk": 2,
+        "safe": 3
+      },
+      "mainPercentages": {
+        "combat": 60,
+        "position": 40,
+        "frontline": 40,
+        "support": 60,
+        "pressure": 60,
+        "design": 40,
+        "risk": 40,
+        "safe": 60
+      },
+      "mainTraits": {
+        "combatPosition": "combat",
+        "frontlineSupport": "support",
+        "pressureDesign": "pressure",
+        "riskSafe": "safe"
+      },
+      "mainResult": {
+        "id": "combat-support-pressure-safe",
+        "name": "확실한 마무리꾼",
+        "summary": "열린 교전에서 안정적인 타이밍을 잡아 확실하게 끝내는 플레이어",
+        "imageSrc": null,
+        "imageAlt": "확실한 마무리꾼 캐릭터 이미지",
+        "description": "먼저 무리해서 싸움을 열기보다 열린 교전을 놓치지 않고 확실하게 끝내는 걸 선호합니다.\n팀원의 움직임에 빠르게 맞추면서도 안정적인 타이밍에 직접 압박을 더하는 스타일입니다.",
+        "mainTraits": {
+          "combatPosition": "combat",
+          "frontlineSupport": "support",
+          "pressureDesign": "pressure",
+          "riskSafe": "safe"
+        }
+      },
+      "subScores": {
+        "mainBody": 2,
+        "flank": 0,
+        "hotdrop": 1,
+        "tail": 1,
+        "fullLoot": 1,
+        "fastLoot": 1,
+        "center": 1,
+        "edge": 0,
+        "standardGear": 0,
+        "specialGear": 1
+      },
+      "subAxes": {
+        "mainBodyFlank": {
+          "bias": 1,
+          "direction": "mainBody",
+          "strength": "strong",
+          "label": "본대형"
+        },
+        "hotdropTail": {
+          "bias": 0,
+          "direction": "neutral",
+          "strength": "neutral",
+          "label": "상황 낙하형"
+        },
+        "fullLootFastLoot": {
+          "bias": 0,
+          "direction": "neutral",
+          "strength": "neutral",
+          "label": "균형 파밍형"
+        },
+        "centerEdge": {
+          "bias": 1,
+          "direction": "center",
+          "strength": "strong",
+          "label": "중앙 선점형"
+        },
+        "standardGearSpecialGear": {
+          "bias": 1,
+          "direction": "specialGear",
+          "strength": "strong",
+          "label": "보따리형"
+        }
+      },
+      "displaySubTags": [
+        "본대형",
+        "중앙 선점형"
+      ]
+    }
+  }
+]

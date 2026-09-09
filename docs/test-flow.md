@@ -27,13 +27,19 @@ q14 → q24 → q05 → q20 → q10 → q15
 
 localStorage 키는 `pubg-playstyle-test:attempt`입니다. 한 번에 한 attempt만 보관합니다.
 
+선택지의 `choiceId`는 `q01-choice-1` 같은 고정 내부 ID입니다. 화면의 A/B는
+`QuestionCard`가 표시 인덱스로 생성하며, 현재 질문·선택지 순서는 그대로 유지합니다.
+과거 `q01-a` 같은 ID가 포함된 저장값은 현재 질문 데이터 검증에서 `invalid`로 처리합니다.
+`/test`에서는 안내 후 새 테스트를 시작하고, `/result`에서는 복원 불가 안내를 표시합니다.
+이전 답변을 새 ID로 자동 변환하지 않으며 테스트 버전은 변경하지 않습니다.
+
 ```ts
 {
   testVersion: "v1",
   questionOrderKey: "q01,q16,...", // 실제로는 고정 순서 24개 전체
   status: "in_progress", // 완료하면 "completed"
   currentQuestionIndex: 0, // 0부터 시작하는 화면 위치
-  answers: [{ questionId: "q01", choiceId: "q01-a" }],
+  answers: [{ questionId: "q01", choiceId: "q01-choice-1" }],
   startedAt: "2026-09-08T10:00:00.000Z",
   attemptId: "crypto.randomUUID()로 생성한 값",
   // completedAt: 완료 상태에만 추가
