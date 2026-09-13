@@ -68,6 +68,7 @@ function setup(options = {}) {
         assert.equal(lib.restoreAttempt(h.window.localStorage.getItem(lib.TEST_STORAGE_KEY)).kind, "completed");
         calls.push("analytics"); tracking.trackTestComplete(...args);
       },
+      loadingTiming: h.load("src/lib/loadingTiming.ts").loadingTiming,
       router: { push: value => { calls.push("navigate"); state.route = value; } },
     };
     return new Function("d", `const { ${Object.keys(dependencies).join(",")} } = d; ${handleNext}; return handleNext;`)(dependencies);

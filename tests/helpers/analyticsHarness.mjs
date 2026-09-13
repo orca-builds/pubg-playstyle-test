@@ -61,7 +61,7 @@ export function createHarness(options = {}) {
         return load(existsSync(new URL(`${file}.ts`, root)) ? `${file}.ts` : `${file}.tsx`);
       },
       { env: options.env ?? configured }, window,
-      { referrer: options.referrer ?? "" },
+      options.document ?? { referrer: options.referrer ?? "" },
       { userAgent: options.userAgent ?? "Desktop", maxTouchPoints: options.maxTouchPoints ?? 0, ...options.navigator },
       { randomUUID },
       options.fetch ?? (() => { throw new Error("Unexpected network request in test"); }),

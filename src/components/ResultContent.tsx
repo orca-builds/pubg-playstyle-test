@@ -61,7 +61,7 @@ export default function ResultContent({ snapshot, onStartTest, onRetryLoad, isSt
           {shareOutcome === "copied" ? "복사했어요" : shareOutcome === "error" ? SHARE_ERROR : ""}
         </p>
         <button type="button" onClick={onStartTest} disabled={isStarting || isSharing} aria-busy={isStarting} className={`${buttonClass} border border-blue-700 text-blue-800 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50`}>
-          {isStarting ? "새 테스트 준비 중…" : startError ? "다시 하기 재시도" : "다시 하기"}
+          {startError ? "다시 하기 재시도" : "다시 하기"}
         </button>
         {startError && <p role="alert" className="text-sm leading-relaxed text-red-700">{startError}</p>}
       </div>

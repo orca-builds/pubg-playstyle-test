@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import QuestionCard from "@/components/QuestionCard";
+import LoadingOverlay from "@/components/LoadingOverlay";
+import { loadingTiming } from "@/lib/loadingTiming";
 import { orderedQuestions } from "@/data/questionOrder";
 import {
   canGoNext, finishAttempt, isAttemptExpired, moveQuestion,
@@ -266,6 +268,7 @@ export default function TestRunner() {
       try { clearPendingCompletion(progress.attemptId); } catch { /* Browser storage can be revoked. */ }
       setIsNavigating(true);
       setError("");
+      if (!await loadingTiming.waitForMinimum() || !mounted.current) return;
       router.push("/result");
     } catch {
       completionLock.current = false;
@@ -279,17 +282,19 @@ export default function TestRunner() {
   const total = orderedQuestions.length;
   const question = progress ? orderedQuestions[progress.currentQuestionIndex] : null;
   const selected = progress?.answers.find((answer) => answer.questionId === question?.id)?.choiceId;
+  const loadingOpen = isStarting || isNavigating || (screen === "loading" && !error && !needsNewStart);
 
   return (
     <main lang="ko" className="flex min-h-dvh flex-col bg-slate-50 px-4 pt-6 text-slate-950 sm:pt-10">
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6">
+      <LoadingOverlay open={loadingOpen} failed={!loadingOpen && (Boolean(error) || answerStatus === "error")} title={isNavigating ? "결과 생성 중" : "테스트 준비 중"}
+        description={isNavigating ? "플레이스타일을 정리하고 있어요." : "문항을 준비하고 있어요."} />
+      <div inert={loadingOpen} className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6">
         <header className="space-y-3">
           <h1 className="text-2xl font-bold">PUBG 플레이스타일 테스트</h1>
           <p className="break-keep leading-relaxed text-slate-600 [overflow-wrap:anywhere]">정답은 없습니다.<br />잘하는 플레이보다 평소 실제 게임에서 내가 더 자주 하는 선택을 골라주세요.</p>
         </header>
 
         {notice && <p role="status" className="rounded-lg border border-slate-300 bg-white p-4 leading-relaxed">{notice}</p>}
-        {isStarting && <p role="status">테스트를 시작하고 있습니다.</p>}
 
         {confirmRestart ? (
           <section aria-labelledby="restart-title" className="space-y-5 rounded-xl border border-slate-300 bg-white p-5">
@@ -306,7 +311,7 @@ export default function TestRunner() {
             </div>
           </section>
         ) : screen === "loading" ? (
-          !error && !isStarting && <p role="status">진행 상태를 확인하고 있습니다.</p>
+          null
         ) : screen === "resume" && progress ? (
           <section className="space-y-5 rounded-xl border border-slate-300 bg-white p-5">
             <h2 className="text-xl font-bold">진행 중인 테스트가 있습니다.</h2>
@@ -363,7 +368,7 @@ export default function TestRunner() {
                   }
                 }}>이전</button>
                 <button type="button" className={primaryClass} disabled={isNavigating || isStarting || !canGoNext(progress)} onClick={() => void handleNext()}>
-                  {progress.currentQuestionIndex === total - 1 ? (isNavigating ? "완료 저장 중…" : "결과 보기") : "다음"}
+                  {progress.currentQuestionIndex === total - 1 ? "결과 보기" : "다음"}
                 </button>
               </nav>
             )}

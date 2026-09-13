@@ -76,6 +76,7 @@ export function setup(options = {}) {
         state.answerStatus = "ready";
       },
       prepareResultSnapshot: h.load("src/lib/resultSnapshot.ts").prepareResultSnapshot,
+      loadingTiming: h.load("src/lib/loadingTiming.ts").loadingTiming,
       router: { push: value => { state.route = value; } },
     };
     return new Function("d", `const { ${Object.keys(dependencies).join(",")} } = d; ${code}; return { ${names.join(",")} };`)(dependencies);

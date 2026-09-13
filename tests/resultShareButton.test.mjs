@@ -38,7 +38,7 @@ for (const outcome of ["shared", "copied", "cancelled", "error"]) {
       refIndex = 0;
       const page = Page();
       const preview = page.type(page.props);
-      const content = preview.props.children.props.children[1];
+      const content = preview.props.children.find(child => child.type === "div").props.children[1];
       assert.equal(typeof content.props.onShare, "function");
       const tree = content.type(content.props);
       const actions = tree.props.children.at(-1).props.children;

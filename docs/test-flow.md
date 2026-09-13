@@ -112,3 +112,42 @@ npm run build
 12. 320~390px 화면에서 긴 질문·선택지에 가로 스크롤이 없는지, Tab/Enter로 조작 가능한지 확인합니다.
 
 자동 테스트는 실제 브라우저 클릭이나 모바일 화면 렌더링 검사를 대신하지 않습니다.
+
+## 시작·결과 생성 로딩
+
+`LoadingOverlay`는 랜딩의 `/test` 이동 대기, TestRunner의 초기 복원·start 처리,
+Q24 결과 보기의 queue drain부터 결과 페이지 이동까지 표시합니다.
+결과 페이지에서 다시 시작할 때도 같은 비주얼을 사용합니다.
+문항 선택·Next 이동·일반 background answer save·restart drain 중에는 표시하지 않습니다.
+restart는 기존 drain이 성공하고 새 start를 실행하는 구간에만 overlay를 표시합니다.
+
+이미지는 `/images/loading/loading-repair.png` 원본 RGBA와 1212:1297 비율을 유지합니다.
+폭 75vw/최대 320px, 높이 최대 55dvh로 제한합니다. 검은 반투명 배경 위에 이미지,
+상황별 설명과 실제 진행률을 뜻하지 않는 가로 애니메이션을 표시합니다.
+키보드 배경 접근은 `inert`, 스크롤은 body/root overflow와 touchmove 차단으로 막고,
+닫힘·unmount 시 원래 스타일과 포커스를 복원합니다. reduced-motion에서는 bar를 정지합니다.
+
+모바일 QA: 320/390px 세로 및 가로 화면에서 Slow 3G로 시작·결과 보기 overlay,
+이미지 비율/여백/스크롤 차단을 확인합니다. start 500, answer 500, complete 500 각각에서
+레이어 해제와 기존 재시도 UI를 확인합니다. Q1~Q23은 느린 저장 중에도 overlay 없이
+선택 후 Next를 눌러 이동해야 합니다. 요청 중 더블 탭으로 start/complete가 중복되지 않아야 합니다.
+OS 움직임 줄이기 설정, 이전/새로고침/restart/결과 공유도 함께 확인합니다.
+
+## 로딩 표시 시간 정책
+
+`src/lib/loadingTiming.ts`의 `LOADING_SHOW_DELAY_MS = 300`,
+`LOADING_MIN_VISIBLE_MS = 700`에서 모바일 QA 후 시간을 조정할 수 있습니다.
+300ms 미만 작업은 이미지를 표시하지 않고, 한 번 표시한 이미지는 성공 시 최소 700ms 유지합니다.
+실패는 최소 시간을 기다리지 않고 오류 UI를 바로 표시합니다.
+
+각 페이지의 `LoadingOverlay`는 처리 상태만 등록합니다. 루트 layout의 `LoadingLayer`가
+기존 디자인의 `LoadingOverlayVisual`을 유지해 랜딩 → 테스트 전환 중 표시 시계가 이어집니다.
+start API와 progress 초기화는 즉시 처리하고, 빠르게 준비된 Q1 위에 남은 최소 시간 동안
+레이어를 유지합니다. 이때 배경은 inert이므로 추가 선택을 받지 않습니다.
+complete는 drain·scoring·API·로컬 완료·analytics 처리를 마친 후, 결과 라우팅 직전에만
+`waitForMinimum()`으로 남은 표시 시간을 기다립니다. 긴 작업에는 추가 대기가 없습니다.
+
+가짜 타이머 테스트: `node --test --test-isolation=none tests/loadingTiming.test.mjs`.
+실제 모바일에서는 API 응답 시간을 약 180ms/600ms/2초로 각각 조절해 미표시/약 700ms 노출/
+추가 지연 없는 해제를 확인합니다. start·complete 실패, 빠른 재시도, 로딩 중 뒤로 가기에서도
+레이어가 다시 나타나거나 화면을 계속 막지 않는지 확인합니다. 이미지·문구·reduced-motion은 기존과 같습니다.
