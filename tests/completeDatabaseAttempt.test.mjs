@@ -51,7 +51,8 @@ function setup(options = {}) {
   let failLocal = options.failLocal ?? false;
   function handler() {
     const dependencies = {
-      progress, orderedQuestions: questions, answerSaveLock: { current: false }, answerStatus: "ready",
+      progress, orderedQuestions: questions, activeAttempt: { current: progress.attemptId },
+      completionPending: state.pending, persistAnswers: async () => { calls.push("drain"); return true; },
       completionLock, completionDraft, mounted, ensureFresh: () => true, canGoNext: lib.canGoNext,
       finishAttempt: value => { calls.push("calculate"); return lib.finishAttempt(value); },
       completeDatabaseAttempt: api.completeDatabaseAttempt, clearPendingCompletion: api.clearPendingCompletion,
@@ -79,7 +80,7 @@ test("actual final handler orders DB completion before local snapshot/Analytics/
   const h = setup();
   const handle = h.handler();
   await Promise.all([handle(), handle(), handle()]);
-  assert.deepEqual(h.calls, ["calculate", "db-call", "db-response", "save", "snapshot", "analytics", "navigate"]);
+  assert.deepEqual(h.calls, ["drain", "calculate", "db-call", "db-response", "save", "snapshot", "analytics", "navigate"]);
   assert.equal(h.requests.length, 1);
   assert.equal(h.state.route, "/result");
   assert.equal(h.api.hasPendingCompletion(h.progress), false);
@@ -125,6 +126,7 @@ test("reload after lost response preserves pending marker and same credentials f
   assert.equal(reload.state.pending, true);
   assert.equal(reload.progress.attemptId, h.progress.attemptId);
   await reload.handler()();
+  assert.ok(!reload.calls.includes("drain")); // The server may already have completed: never re-save answers.
   assert.equal(reload.requests.length, 1);
   assert.equal(reload.requests[0].url, `/api/attempts/${h.progress.attemptId}/complete`);
   assert.equal(JSON.parse(reload.requests[0].init.body).write_token, token);
@@ -192,6 +194,7 @@ test("unmount while completing leaves recoverable progress without navigation or
   let resolve;
   const h = setup({ fetch: () => new Promise(done => { resolve = done; }) });
   const pending = h.handler()();
+  await new Promise(resolve => setImmediate(resolve));
   h.mounted.current = false;
   resolve(Response.json({ completed: true, already_completed: false, duration_seconds: 2, answer_change_count: 0, back_count: 0,
     result: h.load("src/lib/completionResult.ts").toResultColumns(h.completionDraft.current.result) }));

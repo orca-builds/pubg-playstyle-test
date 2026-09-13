@@ -64,7 +64,7 @@ test("고정 순서는 원본 24문항을 중복 없이 포함하고 원본 관�
   assert.deepEqual(["q21", "q22", "q23", "q24"].map(id => QUESTION_ORDER.indexOf(id)), [4, 9, 14, 19]);
 });
 
-test("선택 없이 다음 진행 불가, 선택만으로 자동 이동하지 않음", () => {
+test("선택 없이 다음 진행 불가, 순수 답변 변경과 문항 이동 함수는 분리", () => {
   const original = start();
   assert.equal(canGoNext(original), false);
   assert.deepEqual(moveQuestion(original, 1), original);

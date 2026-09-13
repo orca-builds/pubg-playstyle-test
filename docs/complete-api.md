@@ -75,7 +75,7 @@ updated_at은 기존 트리거가 갱신한다. 최초 완료 duration이 0~86,4
 
 ## 화면과 복구
 
-Q24 DB 저장 → 기존 로컬 계산 → complete API → DB 성공 → 로컬 완료 저장 → resultSnapshot 준비
+Q24 로컬 저장 → 백그라운드 큐의 모든 답변 DB 저장 확인 → 기존 로컬 계산 → complete API → DB 성공 → 로컬 완료 저장 → resultSnapshot 준비
 → PostHog test_complete → /result 이동 순서다. 결과 화면 새로고침은 로컬 snapshot만 복구한다.
 test_complete는 기존 attempt별 중복 방지 키를 유지하며, DB가 확정한 duration과 행동 횟수를 사용한다.
 로컬 startedAt/completedAt은 기존 복구 규칙을 유지하기 위해 클라이언트 시각 그대로 둔다.
@@ -92,7 +92,7 @@ DB/Analytics의 duration과 로컬 두 시각의 단순 차이는 다를 수 있
 ## 직접 QA
 
 1. 개발 DB에 003을 적용한 뒤 새 테스트를 시작한다. Q24까지 저장하고 answers에 해당 ID로 24행이 있는지 확인한다.
-2. 결과 보기를 누른다. complete POST 200 이후에만 결과 화면으로 이동해야 한다.
+2. 마지막 답변 선택 후 큐가 비워져야 complete POST가 시작되고, 200 이후에만 결과 화면으로 이동해야 한다.
 3. Table Editor에서 is_completed=true, completed_at 존재, last_question_index=24,
    main_type/18개 score/태그/횟수가 저장됐는지 확인한다. duration은 DB 두 시각 차이를 소수 셋째 자리로 반올림한 값이다.
 4. Network의 동일 완료 요청을 재전송한다. already_completed=true이며 completed_at/updated_at/점수/횟수가 그대로여야 한다.

@@ -85,16 +85,20 @@ Q1은 1, Q5는 5이며 Q3 재수정 후에도 5다. DB의 GREATEST와 부모 행
 감소하지 않는다. 로컬 currentQuestionIndex는 기존대로 0-based 현재 화면 위치이며 별개다.
 
 TestRunner는 선택을 로컬에 먼저 저장하고 기존 question_answer/answer_change를 기록한 뒤
-DB에 저장한다. 로컬 변경이 실패하면 DB를 호출하지 않는다. DB 저장 중에는 선택·이동·재시작을
-막고, 저장 실패 시 로컬 선택을 유지하면서 이전/다음/결과 이동을 막는다. 수동 저장 재시도는
+다음 문항으로 즉시 이동하고 백그라운드 큐에서 DB에 저장한다. 로컬 변경이 실패하면 DB를 호출하지 않는다.
+DB 저장 중에도 선택·이동·재시작이 가능하다. 실패 시 안내와 재시도 버튼을 표시하고 테스트 진행은 허용한다.
+최종 완료는 미저장 답변이 남아 있으면 차단한다. 수동 저장 재시도는
 클릭 이벤트를 다시 기록하지 않는다. analytics answer_saved는 로컬 저장 성공 의미를 유지한다.
 
 `pubg-playstyle-test:answer-sync:v1`에는 `{ attemptId, answers: { questionId: choiceId } }` 형태의
 서버 저장 확인 기록만 둔다. token은 없다. 선택 시 해당 문항의 확인을 먼저 해제하고 DB 200
 확인 후 기록한다. 저장 실패·새로고침·이전 버전의 로컬 전용 답변은 이 기록과 비교해 미저장을
-찾는다. 이어하기/수동 재시도로 미저장 답변을 화면 순서대로 직렬 저장하고 모두 성공해야
-다음 이동을 허용한다. 같은 페이지에서 동일한 저장 요청은 공유하고 다른 답변의 동시 저장은
-거부한다. 원래 credential을 사용하며 start API를 재호출하지 않는다.
+찾는다. 이어하기에서 원래 credential로 미저장 답변을 백그라운드 재동기화하며 start API를 재호출하지 않는다.
+attempt별 최신 로컬 답변 스냅샷과 확인 기록의 차이가 pending 큐다. 한 요청이 성공한 후
+최신 스냅샷을 다시 읽고 다음 미저장 답변을 전송한다. 아직 전송하지 않은 같은 문항의 변경은
+최신 답변으로 합친다. 실패하면 큐를 멈추고 최신 로컬 답은 계속 갱신하며, 명시적 저장 재시도/
+이어하기/최종 결과 보기에서 다시 전송한다. 정상 저장 중에는 별도 진행 안내를 표시하지 않는다.
+새 attempt commit 후 이전 큐는 폐기하며 이미 보낸 요청의 응답은 새 확인 기록이나 UI를 갱신하지 않는다.
 
 서로 다른 탭이나 네트워크 timeout 뒤 늦게 도착한 요청까지 사용자의 클릭 시간순으로 정렬하는
 revision 계약은 이번에 추가하지 않았다. 같은 문항의 서버 최종 답은 마지막 DB 쓰기를 따른다.
@@ -110,12 +114,12 @@ revision 계약은 이번에 추가하지 않았다. 같은 문항의 서버 최
 4. 화면 Q5까지 답하고 Q3으로 돌아가 수정한다. 부모 값은 5를 유지해야 한다.
 5. 새로고침 후 이어하기로 다른 답을 선택한다. 기존 attempt_id이며 start POST가 없어야 한다.
 6. DevTools Request blocking으로 `/api/attempts/*/answers`를 막고 답을 바꾼다. 로컬 선택은
-   남고 오류/재시도 UI가 나오며 다음/결과 버튼은 막혀야 한다. 새로고침해도 미저장 상태가
+   남고 오류/재시도 UI가 나오며 다음 문항을 계속 답할 수 있어야 한다. 완료 API는 호출되지 않아야 한다. 새로고침해도 미저장 상태가
    감지되어야 한다. 차단 해제 후 저장 재시도로 기존 행이 갱신되는지 확인한다.
 7. 개발용 API 요청에서 잘못된 token은 403, 다른 질문의 answer_id/잘못된 화면 index는 400,
    없는 UUID는 404인지 확인한다. 실제 token을 URL·console·공유 자료에 붙여 넣지 않는다.
 8. 24개 답변 후 로컬 결과가 정상이고 DB answers는 24행, last_question_index=24,
-   결과 보기 전에는 is_completed=false, 완료 API 성공 후에는 true인지 확인한다. PostHog payload에 token이 없어야 한다.
+   큐 drain 전에는 is_completed=false, 완료 API 성공 후에는 true인지 확인한다. PostHog payload에 token이 없어야 한다.
 
 answerApi.test.mjs는 실제 SDK와 가짜 DB 전송으로 API 계약을 검증하고 migration을 정적으로
 검사한다. syncDatabaseAnswers.test.mjs는 실제 TestRunner handler와 가짜 fetch로 복구/실패를

@@ -118,7 +118,7 @@ test("actual startNew callback uses server retry UUID, saves before start, and c
   let created;
   const dependencies = {
     completionDraft: { current: null }, setCompletionPending() {},
-    answerSaveLock: { current: false }, setAnswerStatus() {},
+    activeAttempt: { current: null }, setAnswerStatus() {},
     startDatabaseAttempt: h.load("src/lib/startDatabaseAttempt.ts").startDatabaseAttempt,
     startLock: { current: false }, mounted: { current: true }, setIsStarting() {}, setNeedsNewStart() {},
     setProgress: (next) => { created = next; }, setScreen() {}, setConfirmRestart() {}, setError() {},

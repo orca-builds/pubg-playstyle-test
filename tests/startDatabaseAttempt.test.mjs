@@ -40,7 +40,7 @@ function runner(h) {
   const state = { progress: null, screen: "loading", error: "", starting: false, needsNew: false };
   const dependencies = {
     completionDraft: { current: null }, setCompletionPending() {},
-    answerSaveLock: { current: false }, setAnswerStatus() {},
+    activeAttempt: { current: null }, setAnswerStatus() {},
     startLock: { current: false }, mounted: { current: true }, completionLock: { current: false },
     setProgress: value => { state.progress = value; }, setScreen: value => { state.screen = value; },
     setError: value => { state.error = value; }, setIsStarting: value => { state.starting = value; },

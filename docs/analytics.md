@@ -91,7 +91,9 @@ test_complete의 세부 속성:
 로컬 답변 저장이 실패했음을 뜻합니다. DB answer API의 성공 여부와는 별개입니다.
 선택을 로컬에 반영할 때 기존 question_answer/answer_change를 기록하고 DB 저장을 진행합니다.
 DB 저장 재시도/새로고침 후 미저장 답변 동기화는 이 이벤트를 다시 보내지 않습니다.
-DB 저장 실패 시 다음 문항 이동은 차단합니다. write_token과 DB 동기화 확인 기록은 이벤트에 넣지 않습니다.
+DB 저장은 백그라운드 큐에서 처리하므로 성공/실패 응답을 기다리지 않고 다음 문항으로 이동합니다.
+실패 시 저장 재시도 안내를 표시하고 최종 완료만 대기합니다. 재전송은 question_answer/answer_change를 추가하지 않습니다.
+write_token과 DB 동기화 확인 기록은 이벤트에 넣지 않습니다.
 
 result_view는 결과 **조회**를 측정하므로 새로고침/재방문을 허용합니다. 결과 전환율은
 test_complete 또는 result_view의 고유 attempt_id 수를 사용하세요. 단순 result_view 총합은

@@ -5,7 +5,23 @@ import type { InProgressAttempt } from "@/types/testProgress";
 // Only acknowledged choices, never a token. Kept separate from Analytics and progress.
 export const ANSWER_SYNC_KEY = "pubg-playstyle-test:answer-sync:v1";
 type Acknowledged = { attemptId: string; answers: Record<string, string> };
-const inFlight = new Map<string, { signature: string; promise: Promise<void> }>();
+type SaveQueue = {
+  latest: InProgressAttempt;
+  promise: Promise<void> | null;
+  failed: boolean;
+  stopped: boolean;
+};
+const queues = new Map<string, SaveQueue>();
+
+// Called only after a new attempt has committed. An old response must not update
+// the new attempt's acknowledgements or send its remaining queued answers.
+export function retainAnswerQueue(attemptId: string): void {
+  for (const [id, queue] of queues) {
+    if (id === attemptId) continue;
+    queue.stopped = true;
+    queues.delete(id);
+  }
+}
 
 function readAcknowledged(storage: Pick<Storage, "getItem">, attemptId: string): Acknowledged {
   const raw = storage.getItem(ANSWER_SYNC_KEY);
@@ -31,32 +47,49 @@ export function invalidateAnswerAcknowledgement(storage: Pick<Storage, "getItem"
   storage.setItem(ANSWER_SYNC_KEY, JSON.stringify(acknowledged));
 }
 
-export function syncDatabaseAnswers(progress: InProgressAttempt): Promise<void> {
-  const signature = JSON.stringify(progress.answers);
-  const active = inFlight.get(progress.attemptId);
-  if (active) {
-    // Remounts share an identical save; never race a different set of choices.
-    return active.signature === signature ? active.promise : Promise.reject(new Error("ANSWER_SAVE_FAILED"));
+export function syncDatabaseAnswers(progress: InProgressAttempt, retry = false): Promise<void> {
+  let queue = queues.get(progress.attemptId);
+  if (!queue) {
+    queue = { latest: progress, promise: null, failed: false, stopped: false };
+    queues.set(progress.attemptId, queue);
   }
-  const promise = sync(progress).finally(() => { inFlight.delete(progress.attemptId); });
-  inFlight.set(progress.attemptId, { signature, promise });
-  return promise;
+  // The complete local snapshot is the pending queue. Unsent changes to the same
+  // question coalesce; the active request always finishes before the next starts.
+  queue.latest = progress;
+  if (queue.promise) return queue.promise;
+  if (queue.failed && !retry) return Promise.reject(new Error("ANSWER_SAVE_FAILED"));
+  queue.failed = false;
+  const active = queue;
+  active.promise = sync(active).then(function settle(): void | Promise<void> {
+    // Include selections enqueued between the worker returning and this microtask.
+    if (active.stopped) throw new Error("ANSWER_SAVE_FAILED");
+    if (hasUnsyncedAnswers(window.localStorage, active.latest)) return sync(active).then(settle);
+    active.promise = null;
+  }).catch(() => {
+    active.failed = true;
+    active.promise = null;
+    throw new Error("ANSWER_SAVE_FAILED");
+  });
+  return active.promise;
 }
 
-async function sync(progress: InProgressAttempt): Promise<void> {
+async function sync(queue: SaveQueue): Promise<void> {
   try {
     const storage = window.localStorage;
+    const progress = queue.latest;
     const credential = readAttemptCredential(storage, progress);
     if (!credential) throw new Error("ANSWER_SAVE_FAILED");
-    const acknowledged = readAcknowledged(storage, progress.attemptId);
-    // Old local-only answers and interrupted saves are reconciled before moving on.
-    for (const [index, question] of orderedQuestions.entries()) {
-      const answer = progress.answers.find(item => item.questionId === question.id);
-      if (!answer || acknowledged.answers[question.id] === answer.choiceId) continue;
+    while (true) {
+      if (queue.stopped || !readAttemptCredential(storage, progress)) throw new Error("ANSWER_SAVE_FAILED");
+      const acknowledged = readAcknowledged(storage, progress.attemptId);
+      const answer = queue.latest.answers.find(item => acknowledged.answers[item.questionId] !== item.choiceId);
+      if (!answer) return;
+      const index = orderedQuestions.findIndex(question => question.id === answer.questionId);
+      if (index < 0) throw new Error("ANSWER_SAVE_FAILED");
       const response = await fetch(`/api/attempts/${progress.attemptId}/answers`, {
         method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store",
         signal: AbortSignal.timeout(15_000),
-        body: JSON.stringify({ write_token: credential.writeToken, question_id: question.id,
+        body: JSON.stringify({ write_token: credential.writeToken, question_id: answer.questionId,
           answer_id: answer.choiceId, question_index: index + 1 }),
       });
       if (response.status !== 200) throw new Error("ANSWER_SAVE_FAILED");
@@ -65,8 +98,12 @@ async function sync(progress: InProgressAttempt): Promise<void> {
           !("last_question_index" in result) || typeof result.last_question_index !== "number" ||
           !Number.isInteger(result.last_question_index) || result.last_question_index < index + 1 ||
           result.last_question_index > orderedQuestions.length) throw new Error("ANSWER_SAVE_FAILED");
-      acknowledged.answers[question.id] = answer.choiceId;
-      storage.setItem(ANSWER_SYNC_KEY, JSON.stringify(acknowledged));
+      if (queue.stopped || !readAttemptCredential(storage, progress)) throw new Error("ANSWER_SAVE_FAILED");
+      // Read again: local selections may have invalidated other acknowledgements
+      // while this request was pending. A stale copy would lose those changes.
+      const current = readAcknowledged(storage, progress.attemptId);
+      current.answers[answer.questionId] = answer.choiceId;
+      storage.setItem(ANSWER_SYNC_KEY, JSON.stringify(current));
     }
   } catch {
     // No token, response body, credentials, or underlying network/storage error escapes.

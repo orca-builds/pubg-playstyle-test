@@ -5,7 +5,7 @@ import { createAttempt, saveAttempt } from "@/lib/testProgress";
 import { CREDENTIAL_STORAGE_KEY, isStartResponse } from "@/lib/attemptCredentials";
 import { clearRetryRequest, trackTestStart } from "@/lib/testAnalytics";
 import type { InProgressAttempt } from "@/types/testProgress";
-import { ANSWER_SYNC_KEY } from "@/lib/syncDatabaseAnswers";
+import { ANSWER_SYNC_KEY, retainAnswerQueue } from "@/lib/syncDatabaseAnswers";
 import { COMPLETION_PENDING_KEY } from "@/lib/completeDatabaseAttempt";
 
 let inFlight: Promise<InProgressAttempt> | null = null;
@@ -74,6 +74,7 @@ async function start(isRetry: boolean): Promise<InProgressAttempt> {
       throw new Error("START_FAILED");
     }
     issued = null;
+    retainAnswerQueue(progress.attemptId);
     // These sidecars are attempt-scoped; even if cleanup fails, old values cannot
     // apply to the new ID. Never remove them before the new progress commits.
     for (const key of [ANSWER_SYNC_KEY, COMPLETION_PENDING_KEY]) {

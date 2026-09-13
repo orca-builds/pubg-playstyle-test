@@ -35,7 +35,7 @@ export default function TestRunner() {
   const [answerStatus, setAnswerStatus] = useState<"ready" | "pending" | "saving" | "error">("ready");
   const [completionPending, setCompletionPending] = useState(false);
   const completionDraft = useRef<ReturnType<typeof finishAttempt> | null>(null);
-  const answerSaveLock = useRef(false);
+  const activeAttempt = useRef<string | null>(null);
   const startLock = useRef(false);
   const mounted = useRef(true);
   const completionLock = useRef(false);
@@ -44,13 +44,14 @@ export default function TestRunner() {
   const lastQuestionView = useRef<string | null>(null);
 
   const startNew = useCallback(async (message = "", isRetry = false) => {
-    if (startLock.current || answerSaveLock.current) return;
+    if (startLock.current) return;
     startLock.current = true;
     setIsStarting(true);
     setError("");
     try {
       const next = await startDatabaseAttempt(isRetry);
       if (!mounted.current) return;
+      activeAttempt.current = next.attemptId;
       setProgress(next);
       setScreen("questions");
       setConfirmRestart(false);
@@ -85,6 +86,7 @@ export default function TestRunner() {
           return;
         }
         setProgress(restored.progress);
+        activeAttempt.current = restored.progress.attemptId;
         const pendingCompletion = hasPendingCompletion(restored.progress);
         setCompletionPending(pendingCompletion);
         setAnswerStatus(!pendingCompletion && hasUnsyncedAnswers(window.localStorage, restored.progress) ? "pending" : "ready");
@@ -142,7 +144,7 @@ export default function TestRunner() {
   }, [confirmRestart]);
 
   function ensureFresh() {
-    if (startLock.current || answerSaveLock.current) return false;
+    if (startLock.current) return false;
     if (!progress) return false;
     if (isAttemptExpired(progress.startedAt)) {
       startNew("테스트 시작 후 24시간이 지나 새 테스트를 시작합니다.");
@@ -181,33 +183,33 @@ export default function TestRunner() {
   function handleSelect(choiceId: string) {
     if (completionPending) return;
     if (!completionLock.current && progress && ensureFresh()) {
-      const next = selectAnswer(progress, choiceId);
+      const answered = selectAnswer(progress, choiceId);
+      const next = moveQuestion(answered, 1);
       const saved = commit(next, orderedQuestions[progress.currentQuestionIndex].id);
       trackAnswer(progress, choiceId, saved);
-      if (saved) void persistAnswers(next);
-    }
-  }
-
-  async function persistAnswers(next: InProgressAttempt) {
-    if (answerSaveLock.current) return;
-    answerSaveLock.current = true;
-    setAnswerStatus("saving");
-    setError("");
-    try {
-      await syncDatabaseAnswers(next);
-      if (mounted.current) setAnswerStatus("ready");
-    } catch {
-      if (mounted.current) {
-        setAnswerStatus("error");
-        setError("답변을 서버에 저장하지 못했습니다. 선택은 이 브라우저에 남아 있습니다. 연결 상태를 확인하고 저장을 다시 시도해주세요.");
+      if (saved) {
+        if (progress.currentQuestionIndex === orderedQuestions.length - 1) void handleNext(next);
+        else void persistAnswers(next);
       }
-    } finally {
-      answerSaveLock.current = false;
     }
   }
 
-  async function handleNext() {
-    if (answerSaveLock.current || answerStatus !== "ready") return;
+  async function persistAnswers(next: InProgressAttempt, retry = false) {
+    setAnswerStatus("saving");
+    try {
+      await syncDatabaseAnswers(next, retry);
+      if (mounted.current && activeAttempt.current === next.attemptId) setAnswerStatus("ready");
+      return true;
+    } catch {
+      if (mounted.current && activeAttempt.current === next.attemptId) {
+        setAnswerStatus("error");
+      }
+      return false;
+    }
+  }
+
+  async function handleNext(current = progress) {
+    const progress = current;
     if (completionLock.current || !progress || !ensureFresh() || !canGoNext(progress)) return;
     if (progress.currentQuestionIndex < orderedQuestions.length - 1) {
       commit(moveQuestion(progress, 1));
@@ -216,6 +218,14 @@ export default function TestRunner() {
     completionLock.current = true;
     setIsNavigating(true);
     try {
+      // A previous complete request may already have committed on the server.
+      // Its retry must not write answers to a potentially completed attempt.
+      if (!completionPending && !await persistAnswers(progress, true)) {
+        completionLock.current = false;
+        if (mounted.current) setIsNavigating(false);
+        return;
+      }
+      if (!mounted.current || activeAttempt.current !== progress.attemptId) return;
       const draft = completionDraft.current;
       const sameDraft = draft?.progress.attemptId === progress.attemptId &&
         draft.progress.startedAt === progress.startedAt &&
@@ -280,10 +290,10 @@ export default function TestRunner() {
           <section className="space-y-5 rounded-xl border border-slate-300 bg-white p-5">
             <h2 className="text-xl font-bold">진행 중인 테스트가 있습니다.</h2>
             <p>{progress.answers.length} / {total} 문항에 답변했습니다. {progress.currentQuestionIndex + 1}번 문항부터 이어갑니다.</p>
-            <button type="button" disabled={isStarting || answerStatus === "saving"} className={`${primaryClass} w-full`} onClick={() => {
+            <button type="button" disabled={isStarting} className={`${primaryClass} w-full`} onClick={() => {
               if (ensureFresh()) {
                 setScreen("questions");
-                if (answerStatus !== "ready") void persistAnswers(progress);
+                if (!completionPending) void persistAnswers(progress, true);
               }
             }}>이어서 하기</button>
           </section>
@@ -294,14 +304,14 @@ export default function TestRunner() {
               <progress aria-label="답변 완료 진행률" value={progress.answers.length} max={total} className="h-3 w-full accent-blue-700" />
               <p className="text-sm text-slate-600">{progress.answers.length}개 답변 완료</p>
             </div>
-            <fieldset aria-busy={answerStatus === "saving"} disabled={isNavigating || isStarting || answerStatus === "saving" || completionPending} className="pb-8">
+            <fieldset disabled={isNavigating || isStarting || completionPending} className="pb-8">
               <QuestionCard question={question} displayOrder={progress.choiceDisplayOrder} selectedChoiceId={selected} onSelect={handleSelect} />
             </fieldset>
           </>
         ) : null}
 
         {/* Keep save feedback below the question so its appearance cannot push the choices down. */}
-        {(error || ((answerStatus === "pending" || answerStatus === "error") && progress)) && (
+        {(error || (answerStatus === "error" && progress)) && (
           <div className="space-y-3">
             {error && <div role="alert" className="space-y-3 rounded-lg border border-red-300 bg-red-50 p-4 leading-relaxed">
               <p>{error}</p>
@@ -310,11 +320,11 @@ export default function TestRunner() {
                 else initialize();
               }}>{needsNewStart ? "새 테스트 시작" : "다시 시도"}</button>}
             </div>}
-            {(answerStatus === "pending" || answerStatus === "error") && progress && (
-              <div className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4">
-                <p>서버 저장이 완료되면 다음 문항으로 이동할 수 있습니다.</p>
-                <button type="button" className={buttonClass} disabled={isStarting} onClick={() => {
-                  if (progress && ensureFresh()) void persistAnswers(progress);
+            {answerStatus === "error" && progress && (
+              <div role="alert" className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4">
+                <p>답변을 서버에 저장하지 못했습니다. 선택은 이 브라우저에 남아 있어 계속 진행할 수 있습니다. 결과를 보려면 연결 상태를 확인하고 저장을 다시 시도해주세요.</p>
+                <button type="button" className={buttonClass} disabled={isStarting || isNavigating} onClick={() => {
+                  if (progress && ensureFresh()) void persistAnswers(progress, true);
                 }}>답변 저장 다시 시도</button>
               </div>
             )}
@@ -325,19 +335,19 @@ export default function TestRunner() {
           <footer className="sticky bottom-0 z-10 -mx-4 mt-auto space-y-2 border-t border-slate-200 bg-slate-50 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             {screen === "questions" && (
               <nav aria-label="문항 이동" className="grid grid-cols-2 gap-3">
-                <button type="button" className={buttonClass} disabled={isNavigating || isStarting || completionPending || answerStatus !== "ready" || progress.currentQuestionIndex === 0} onClick={() => {
-                  if (!completionPending && !completionLock.current && answerStatus === "ready" && ensureFresh()) {
+                <button type="button" className={buttonClass} disabled={isNavigating || isStarting || completionPending || progress.currentQuestionIndex === 0} onClick={() => {
+                  if (!completionPending && !completionLock.current && ensureFresh()) {
                     const next = moveQuestion(progress, -1);
                     if (commit(next)) trackBack(progress, next.currentQuestionIndex);
                   }
                 }}>이전</button>
-                <button type="button" className={primaryClass} disabled={isNavigating || isStarting || answerStatus !== "ready" || !canGoNext(progress)} onClick={handleNext}>
+                <button type="button" className={primaryClass} disabled={isNavigating || isStarting || !canGoNext(progress)} onClick={() => void handleNext()}>
                   {progress.currentQuestionIndex === total - 1 ? (isNavigating ? "완료 저장 중…" : "결과 보기") : "다음"}
                 </button>
               </nav>
             )}
-            <button ref={restartButton} disabled={isNavigating || isStarting || answerStatus === "saving"} type="button" className="min-h-11 w-full rounded-lg px-4 py-2 text-sm text-slate-500 underline underline-offset-4 hover:text-slate-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700" onClick={() => {
-              if (!answerSaveLock.current) setConfirmRestart(true);
+            <button ref={restartButton} disabled={isNavigating || isStarting} type="button" className="min-h-11 w-full rounded-lg px-4 py-2 text-sm text-slate-500 underline underline-offset-4 hover:text-slate-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700" onClick={() => {
+              setConfirmRestart(true);
             }}>
               처음부터 다시하기
             </button>

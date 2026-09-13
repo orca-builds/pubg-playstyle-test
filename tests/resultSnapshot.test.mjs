@@ -180,7 +180,7 @@ function completionHandler({ failSave = false } = {}) {
   const dependencies = {
     completionDraft: { current: null }, mounted: { current: true }, setCompletionPending() {},
     completeDatabaseAttempt: async () => { events.push("db-complete"); return undefined; }, clearPendingCompletion() {},
-    answerSaveLock: { current: false }, answerStatus: "ready",
+    activeAttempt: { current: progress.attemptId }, completionPending: false, persistAnswers: async () => true,
     progress, orderedQuestions, completionLock: { current: false },
     ensureFresh: () => true, canGoNext: () => true,
     finishAttempt: (attempt) => { events.push("calculate"); return finishAttempt(attempt); },
