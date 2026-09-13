@@ -92,7 +92,7 @@ DB/Analytics의 duration과 로컬 두 시각의 단순 차이는 다를 수 있
 ## 직접 QA
 
 1. 개발 DB에 003을 적용한 뒤 새 테스트를 시작한다. Q24까지 저장하고 answers에 해당 ID로 24행이 있는지 확인한다.
-2. 마지막 답변 선택 후 큐가 비워져야 complete POST가 시작되고, 200 이후에만 결과 화면으로 이동해야 한다.
+2. 마지막 답변 선택만으로 complete POST가 시작되지 않아야 한다. 결과 보기 클릭 후 큐가 비워져야 complete POST가 시작되고, 200 이후에만 결과 화면으로 이동해야 한다.
 3. Table Editor에서 is_completed=true, completed_at 존재, last_question_index=24,
    main_type/18개 score/태그/횟수가 저장됐는지 확인한다. duration은 DB 두 시각 차이를 소수 셋째 자리로 반올림한 값이다.
 4. Network의 동일 완료 요청을 재전송한다. already_completed=true이며 completed_at/updated_at/점수/횟수가 그대로여야 한다.

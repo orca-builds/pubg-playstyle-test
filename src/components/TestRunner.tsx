@@ -34,6 +34,8 @@ export default function TestRunner() {
   const [needsNewStart, setNeedsNewStart] = useState(false);
   const [answerStatus, setAnswerStatus] = useState<"ready" | "pending" | "saving" | "error">("ready");
   const [completionPending, setCompletionPending] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
+  const restartLock = useRef(false);
   const completionDraft = useRef<ReturnType<typeof finishAttempt> | null>(null);
   const activeAttempt = useRef<string | null>(null);
   const startLock = useRef(false);
@@ -144,7 +146,7 @@ export default function TestRunner() {
   }, [confirmRestart]);
 
   function ensureFresh() {
-    if (startLock.current) return false;
+    if (startLock.current || restartLock.current) return false;
     if (!progress) return false;
     if (isAttemptExpired(progress.startedAt)) {
       startNew("테스트 시작 후 24시간이 지나 새 테스트를 시작합니다.");
@@ -184,13 +186,9 @@ export default function TestRunner() {
     if (completionPending) return;
     if (!completionLock.current && progress && ensureFresh()) {
       const answered = selectAnswer(progress, choiceId);
-      const next = moveQuestion(answered, 1);
-      const saved = commit(next, orderedQuestions[progress.currentQuestionIndex].id);
+      const saved = commit(answered, orderedQuestions[progress.currentQuestionIndex].id);
       trackAnswer(progress, choiceId, saved);
-      if (saved) {
-        if (progress.currentQuestionIndex === orderedQuestions.length - 1) void handleNext(next);
-        else void persistAnswers(next);
-      }
+      if (saved) void persistAnswers(answered);
     }
   }
 
@@ -208,8 +206,33 @@ export default function TestRunner() {
     }
   }
 
-  async function handleNext(current = progress) {
-    const progress = current;
+  async function handleRestart() {
+    if (restartLock.current || startLock.current || completionLock.current || !progress) return;
+    restartLock.current = true;
+    setIsRestarting(true);
+    setError("");
+    try {
+      // Freeze the current snapshot before draining; keep its credential until success.
+      if (!commit(progress)) return;
+      // An ambiguous complete response may mean the attempt is already completed.
+      // That flow drained all answers first, so never write to it again.
+      if (completionPending) {
+        if (hasUnsyncedAnswers(window.localStorage, progress)) throw new Error("ANSWER_SAVE_FAILED");
+      } else if (!await persistAnswers(progress, true)) {
+        throw new Error("ANSWER_SAVE_FAILED");
+      }
+      if (!mounted.current || activeAttempt.current !== progress.attemptId) return;
+      trackRetry(progress);
+      await startNew("", true);
+    } catch {
+      if (mounted.current) setError("답변을 저장하지 못해 다시 시작하지 않았습니다. 기존 답변은 유지됩니다. 연결 상태를 확인한 뒤 다시 시작을 눌러주세요.");
+    } finally {
+      restartLock.current = false;
+      if (mounted.current) setIsRestarting(false);
+    }
+  }
+
+  async function handleNext() {
     if (completionLock.current || !progress || !ensureFresh() || !canGoNext(progress)) return;
     if (progress.currentQuestionIndex < orderedQuestions.length - 1) {
       commit(moveQuestion(progress, 1));
@@ -273,15 +296,13 @@ export default function TestRunner() {
             <h2 id="restart-title" className="text-xl font-bold">테스트를 처음부터 다시 시작할까요?</h2>
             <p>현재 선택한 답변은 초기화됩니다.</p>
             <div className="grid grid-cols-2 gap-3">
-              <button ref={cancelButton} disabled={isStarting} type="button" className={buttonClass} onClick={() => {
+              <button ref={cancelButton} disabled={isStarting || isRestarting} type="button" className={buttonClass} onClick={() => {
                 setConfirmRestart(false);
                 requestAnimationFrame(() => restartButton.current?.focus());
               }}>취소</button>
-              <button type="button" disabled={isStarting} className={primaryClass} onClick={() => {
-                if (startLock.current) return;
-                if (progress) trackRetry(progress);
-                startNew("", true);
-              }}>다시 시작</button>
+              <button type="button" disabled={isStarting || isRestarting} aria-busy={isRestarting} className={primaryClass} onClick={() => void handleRestart()}>
+                {isRestarting ? "다시 시작하는 중..." : "다시 시작"}
+              </button>
             </div>
           </section>
         ) : screen === "loading" ? (
@@ -323,7 +344,7 @@ export default function TestRunner() {
             {answerStatus === "error" && progress && (
               <div role="alert" className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4">
                 <p>답변을 서버에 저장하지 못했습니다. 선택은 이 브라우저에 남아 있어 계속 진행할 수 있습니다. 결과를 보려면 연결 상태를 확인하고 저장을 다시 시도해주세요.</p>
-                <button type="button" className={buttonClass} disabled={isStarting || isNavigating} onClick={() => {
+                <button type="button" className={buttonClass} disabled={isStarting || isNavigating || isRestarting} onClick={() => {
                   if (progress && ensureFresh()) void persistAnswers(progress, true);
                 }}>답변 저장 다시 시도</button>
               </div>

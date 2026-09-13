@@ -7,7 +7,7 @@ import { createHarness } from "./analyticsHarness.mjs";
 const source = ts.createSourceFile("TestRunner.tsx",
   readFileSync(new URL("../../src/components/TestRunner.tsx", import.meta.url), "utf8"),
   ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-const names = ["commit", "ensureFresh", "handleSelect", "persistAnswers", "handleNext"];
+const names = ["commit", "ensureFresh", "handleSelect", "persistAnswers", "handleNext", "handleRestart"];
 const declarations = [];
 function visit(node) {
   if (ts.isFunctionDeclaration(node) && names.includes(node.name?.text)) declarations.push(node.getText(source));
@@ -48,6 +48,7 @@ export function setup(options = {}) {
   const state = { progress, answerStatus: sync.hasUnsyncedAnswers(h.window.localStorage, progress) ? "pending" : "ready",
     error: "", route: "", navigating: false, completionPending: false };
   const mounted = { current: true }, activeAttempt = { current: progress.attemptId };
+  const restartLock = { current: false };
   const completionLock = { current: false }, completionDraft = { current: null };
   function render() {
     const dependencies = {
@@ -60,6 +61,7 @@ export function setup(options = {}) {
         calls.push("complete");
         return options.complete ? options.complete(...args) : undefined;
       },
+      restartLock, setIsRestarting: value => { state.restarting = value; },
       clearPendingCompletion() {}, mounted, startLock: { current: false },
       window: h.window, orderedQuestions: questions,
       setProgress: value => { state.progress = value; },
@@ -67,7 +69,12 @@ export function setup(options = {}) {
       setError: value => { state.error = value; },
       setScreen() {}, setNeedsNewStart() {},
       setIsNavigating: value => { state.navigating = value; },
-      startNew() { throw new Error("Unexpected start"); },
+      async startNew(message, isRetry) {
+        const next = await h.load("src/lib/startDatabaseAttempt.ts").startDatabaseAttempt(isRetry);
+        activeAttempt.current = next.attemptId;
+        state.progress = next;
+        state.answerStatus = "ready";
+      },
       prepareResultSnapshot: h.load("src/lib/resultSnapshot.ts").prepareResultSnapshot,
       router: { push: value => { state.route = value; } },
     };

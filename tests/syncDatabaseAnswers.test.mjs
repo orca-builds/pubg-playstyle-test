@@ -3,7 +3,7 @@ import test from "node:test";
 import { randomUUID } from "node:crypto";
 import { setup, saved, tick, token } from "./helpers/answerQueueHarness.mjs";
 
-test("selection advances and tracks local answer before a slow API resolves; rapid questions drain serially", async () => {
+test("selection stays and tracks local answer; Next advances before a slow API resolves; rapid questions drain serially", async () => {
   const pending = [], rows = new Map();
   const h = setup({ fetch: (url, init) => new Promise(resolve => {
     pending.push(() => { const body = JSON.parse(init.body); rows.set(body.question_id, body.answer_id); resolve(saved(init)); });
@@ -11,6 +11,9 @@ test("selection advances and tracks local answer before a slow API resolves; rap
   await h.load("src/lib/analytics.ts").initializeAnalytics();
   for (let i = 0; i < 5; i++) {
     h.render().handleSelect(h.questions[i].choices[0].id);
+    assert.equal(h.state.progress.currentQuestionIndex, i);
+    assert.equal(h.progressLib.canGoNext(h.state.progress), true);
+    await h.render().handleNext();
     assert.equal(h.state.progress.currentQuestionIndex, i + 1);
     assert.equal(h.state.progress.answers.length, i + 1);
     assert.equal(h.requests.length, 1);
@@ -46,9 +49,9 @@ test("in-flight old answer finishes before latest changed answer; unsent changes
   })) });
   const [a, b] = h.questions[0].choices.map(choice => choice.id);
   h.render().handleSelect(a);
-  h.back(); h.render().handleSelect(b);
-  h.back(); h.render().handleSelect(a);
-  h.back(); h.render().handleSelect(b);
+  h.render().handleSelect(b);
+  h.render().handleSelect(a);
+  h.render().handleSelect(b);
   assert.equal(h.requests.length, 1);
   pending.shift()(); await tick();
   assert.equal(h.requests.length, 2);
@@ -65,7 +68,7 @@ test("Q3 change after Q4 preserves all other queued questions and latest server 
   const h = setup({ fetch: (url, init) => new Promise(resolve => pending.push(() => {
     const body = JSON.parse(init.body); rows.set(body.question_id, body.answer_id); resolve(saved(init));
   })) });
-  for (let i = 0; i < 3; i++) h.render().handleSelect(h.questions[i].choices[0].id);
+  for (let i = 0; i < 3; i++) { h.render().handleSelect(h.questions[i].choices[0].id); await h.render().handleNext(); }
   h.back(); h.render().handleSelect(h.questions[2].choices[1].id);
   for (let i = 0; i < 3; i++) { pending.shift()(); await tick(); }
   await h.settle();
@@ -81,7 +84,9 @@ test("failed background save pauses queue but allows questions; explicit retry s
     h.render().handleSelect(h.questions[0].choices[0].id);
     await h.settle();
     assert.equal(h.state.answerStatus, "error");
+    await h.render().handleNext();
     h.render().handleSelect(h.questions[1].choices[0].id);
+    await h.render().handleNext();
     await tick();
     assert.equal(h.state.progress.currentQuestionIndex, 2);
     assert.equal(h.requests.length, 1);
@@ -100,6 +105,7 @@ test("reload restores latest local answers, index, attempt and display order and
   const h = setup({ fetch: async (url, init) => { if (fail) throw new Error("lost response"); return saved(init); } });
   h.render().handleSelect(h.questions[0].choices[0].id); await h.settle();
   fail = true;
+  await h.render().handleNext();
   h.render().handleSelect(h.questions[1].choices[0].id); await h.settle();
   const reload = setup({ localStorage: h.window.localStorage });
   assert.deepEqual(reload.state.progress, h.state.progress);
@@ -131,8 +137,14 @@ test("lost response followed by returning to original answer still sends that an
 test("Q24 waits for all 24 acknowledgements before scoring/complete/result, including double clicks", async () => {
   const pending = [];
   const h = setup({ fetch: (url, init) => new Promise(resolve => pending.push(() => resolve(saved(init)))) });
-  for (const question of h.questions) h.render().handleSelect(question.choices[0].id);
+  for (const [i, question] of h.questions.entries()) {
+    h.render().handleSelect(question.choices[0].id);
+    if (i < 23) await h.render().handleNext();
+  }
   assert.equal(h.state.progress.answers.length, 24);
+  assert.equal(h.state.navigating, false);
+  assert.deepEqual(h.calls, []);
+  const completing = h.render().handleNext();
   assert.equal(h.state.navigating, true);
   assert.deepEqual(h.calls, []);
   await h.render().handleNext();
@@ -140,6 +152,7 @@ test("Q24 waits for all 24 acknowledgements before scoring/complete/result, incl
     assert.deepEqual(h.calls, []);
     pending.shift()(); await tick();
   }
+  await completing;
   assert.deepEqual(h.calls, ["calculate", "complete"]);
   assert.equal(h.requests.length, 24);
   assert.equal(h.state.route, "/result");
@@ -152,7 +165,10 @@ test("unresolved save failure never calculates or completes; final retry drains 
   let fail = true;
   const h = setup({ fetch: async (url, init) => fail && JSON.parse(init.body).question_index === 3 ?
     new Response(null, { status: 500 }) : saved(init) });
-  for (const question of h.questions) h.render().handleSelect(question.choices[0].id);
+  for (const [i, question] of h.questions.entries()) {
+    h.render().handleSelect(question.choices[0].id);
+    if (i < 23) await h.render().handleNext();
+  }
   await tick();
   assert.equal(h.state.answerStatus, "error");
   assert.equal(h.state.completionPending, false);
@@ -175,6 +191,7 @@ test("new attempt retires old queue; its delayed response cannot affect new ackn
     return new Promise(resolve => { resolveOld = () => resolve(saved(init)); });
   } });
   h.render().handleSelect(h.questions[0].choices[0].id);
+  await h.render().handleNext();
   h.render().handleSelect(h.questions[1].choices[0].id);
   const oldId = h.state.progress.attemptId;
   const next = await h.load("src/lib/startDatabaseAttempt.ts").startDatabaseAttempt(true);
@@ -203,7 +220,8 @@ test("local progress failure prevents advancement; acknowledgement write failure
     };
     h.render().handleSelect(h.questions[0].choices[0].id);
     await tick();
-    assert.equal(h.state.progress.currentQuestionIndex, mode === "progress" ? 0 : 1);
+    assert.equal(h.state.progress.currentQuestionIndex, 0);
+    assert.equal(h.progressLib.canGoNext(h.state.progress), mode !== "progress");
     if (mode === "progress") { assert.equal(h.requests.length, 0); assert.ok(h.state.error); }
     else { assert.equal(h.state.answerStatus, "error"); assert.deepEqual(h.calls, []); }
   }
@@ -240,10 +258,15 @@ test("an enqueue while an empty worker settles is not lost", async () => {
 test("unmount during final drain preserves local progress and never completes or navigates", async () => {
   let resolve;
   const h = setup({ fetch: (url, init) => new Promise(done => { resolve = () => done(saved(init)); }) });
-  for (const question of h.questions) h.render().handleSelect(question.choices[0].id);
+  for (const [i, question] of h.questions.entries()) {
+    h.render().handleSelect(question.choices[0].id);
+    if (i < 23) await h.render().handleNext();
+  }
+  const completing = h.render().handleNext();
   h.mounted.current = false;
   for (let i = 0; i < 24; i++) { resolve(); await tick(); }
   assert.deepEqual(h.calls, []);
+  await completing;
   assert.equal(h.state.route, "");
   assert.equal(h.progressLib.restoreAttempt(h.window.localStorage.getItem(h.progressLib.TEST_STORAGE_KEY)).kind, "in_progress");
 });
