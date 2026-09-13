@@ -3,7 +3,7 @@
 `posthog-js` 초기화는 `src/instrumentation-client.ts`에서 시작합니다. 화면은 SDK 대신
 `analytics.ts`와 `testAnalytics.ts`를 사용합니다. 현재 Next.js 16.3.4 / React 19.2.8
 App Router 구조와 [PostHog 공식 사용법](https://posthog.com/docs/libraries/js/usage)을 따릅니다.
-추가 패키지, Supabase 쓰기, 선택지 랜덤화, 공유 이벤트는 없습니다.
+공유는 기존 analytics helper를 사용합니다. 선택지 표시 순서는 attempt마다 12/12로 균형 있게 생성하며 추가 패키지는 없습니다.
 
 ## 공통 context와 저장 수명
 
@@ -16,7 +16,7 @@ App Router 구조와 [PostHog 공식 사용법](https://posthog.com/docs/librari
 | 행동 횟수, is_retry | localStorage `pubg-playstyle-test:analytics:attempt:<attemptId>` | 시도별 보조 기록. 새로고침 유지, 기존 테스트 저장 형식과 분리 |
 | 시작·완료 중복 방지 | localStorage `pubg-playstyle-test:analytics:sent:start:<attemptId>`, `...:complete:<attemptId>` | 해당 시도의 중복 호출 억제 |
 | 랜딩 중복 방지 | sessionStorage `pubg-playstyle-test:analytics:sent:landing:<sessionId>` | 해당 세션의 최초 랜딩만 기록 |
-| 결과에서 다시하기 요청 | sessionStorage `pubg-playstyle-test:analytics:retry-request` | `/test`에서 새 시도 저장 성공 후 소비 |
+| 이전 버전 다시하기 요청 호환 | sessionStorage `pubg-playstyle-test:analytics:retry-request` | 기존 마커는 새 시도 저장 성공 후 소비. 결과 페이지는 이제 직접 start 호출 |
 
 브라우저의 탭 복제/세션 복원 기능이 sessionStorage 자체를 복사·복구하면 session_id도
 이어질 수 있습니다. 일반적인 새 탭 저장소를 세션 경계로 사용하며, 탭 사이의 별도 통신은 추가하지 않았습니다.
@@ -52,27 +52,34 @@ PostHog의 distinct_id/예약 속성 `$session_id`를 덮어쓰지 않습니다.
 device_type을 붙입니다. 시도 안의 이벤트에는 명시적으로 그 시도의 attempt_id를 전달합니다.
 랜딩·CTA에는 아직 새 시도가 없으므로 attempt_id를 붙이지 않습니다.
 question_index, from/to_question_index, display_position은 모두 **1부터 시작**합니다.
+question_answer의 display_position/display_label은 progress.choiceDisplayOrder를 사용하는
+공통 getDisplayedChoices helper로 계산합니다. 내부 answer_id와 answer_change 기준은 변하지 않습니다.
 
 | 이벤트 | 연결 위치 / 의미 | 추가 속성 및 중복 규칙 |
 | --- | --- | --- |
 | landing_view | LandingContent 마운트 effect | session당 1회, 새로고침·Strict Mode·재방문 억제 |
 | cta_click | 랜딩의 테스트 시작하기 Link 클릭 | 클릭마다 1회, 기존 진행이 있으면 원래 복구 화면으로 이동 |
-| test_start | TestRunner.startNew의 기존 새 시도 저장 성공 직후 | attempt당 1회, is_retry. 복구 시 과거 start를 소급 전송하지 않음 |
+| test_start | 공통 startDatabaseAttempt의 서버 발급·credential·진행 저장 성공 직후 | attempt당 1회, is_retry. 복구 시 과거 start를 소급 전송하지 않음 |
 | question_view | TestRunner에서 질문이 실제 표시되는 effect | question_id/index/total_questions. 같은 attempt+문항의 재렌더는 억제, 이전으로 재방문·확인창 취소 후 재표시는 새 view |
 | question_answer | 유효한 선택지 클릭 handler | question_id/index, answer_id, display_position/label, answer_saved. 클릭당 1회, 같은 답 재클릭도 포함 |
 | answer_change | 다른 답으로 실제 저장에 성공 | question_id/index, previous_answer_id/new_answer_id. 첫 선택·같은 답·저장 실패는 제외 |
 | question_back | 이전 버튼으로 실제 저장·이동 성공 | from_question_index/to_question_index. 성공한 이동만 back_count 증가 |
-| test_complete | 점수 계산·완료 저장·snapshot 준비 성공 후, 결과 navigation 전 | attempt당 1회. 결과 복구·새로고침에서는 호출하지 않음 |
+| test_complete | DB complete API·로컬 완료 저장·snapshot 준비 성공 후, 결과 navigation 전 | attempt당 1회. 결과 복구·새로고침에서는 호출하지 않음 |
 | result_view | ResultPreview에 ready snapshot이 표시된 effect | attempt_id, main_type. 마운트 중 같은 결과는 1회, 새로고침/재방문은 새 view |
 | retry_click | 결과의 다시 하기 또는 진행 중 다시 시작 **확정** 버튼 | 이전 attempt_id로 먼저 접수, 이어서 새 UUID 생성. 확인창 열기/취소는 retry가 아님 |
+| share_click | 결과 공유 버튼 클릭 | attempt_id, main_type, share_method(web_share/clipboard), 중복 진행 중 클릭 차단 |
+| share_success | navigator.share Promise resolve 이후 | share_method=web_share. 취소·실패에는 보내지 않음 |
+| copy_link | clipboard.writeText 성공 이후 | share_method=clipboard. 실패에는 보내지 않음 |
 
 결과가 없거나 손상된 상태의 시작 버튼은 유효한 이전 attempt가 없으므로 retry_click을 보내지 않습니다.
-진행 중 재시작은 확인을 받은 뒤 수행하고, 결과에서의 재시작은 요청 마커를 통해 `/test`에서
-항상 새 attempt를 생성합니다. 완료 기록 이후 일반 `/test` 진입도 새 시도이며 is_retry=true입니다.
+진행 중 재시작은 확인을 받은 뒤 수행합니다. 결과 페이지는 이전 ID로 retry_click을 접수한 뒤
+직접 start API를 호출하고, 새 credential·진행 저장과 새 ID의 test_start 이후 `/test`로 이동합니다.
+실패하면 결과를 유지하며, 수동 재시도 클릭은 새 retry_click입니다. 완료 기록 이후 일반 `/test`
+진입도 새 시도이며 is_retry=true입니다. 자세한 내용은 [Retry 문서](retry-flow.md)를 참고합니다.
 
 test_complete의 세부 속성:
 
-- duration_seconds: 기존 completedAt − startedAt. 새로고침/자리 비움 시간 포함, 초 단위
+- duration_seconds: 실제 완료 흐름에서는 DB가 확정한 completed_at − started_at의 초. 소수 셋째 자리로 반올림하며 새로고침/자리 비움 포함. DB 응답을 넘기지 않는 기존 helper 호출은 로컬 시각 차이를 사용
 - main_type: 기존 mainResult.id
 - main_scores: 기존 mainScores 전체 복사. combat/position, frontline/support, pressure/design, risk/safe의 원점수 8개
 - top_sub_tag_1 / top_sub_tag_2: 표시 태그 순서 유지, 없는 태그는 null
@@ -81,7 +88,10 @@ test_complete의 세부 속성:
 
 2단계 이전 시도에는 행동 횟수 기록이 없으므로 0/false에서 시작합니다. 답변 배열만 보고
 과거 변경 횟수를 추측하지 않습니다. question_answer의 answer_saved=false는 클릭은 있었지만
-답변 저장이 실패했음을 뜻합니다.
+로컬 답변 저장이 실패했음을 뜻합니다. DB answer API의 성공 여부와는 별개입니다.
+선택을 로컬에 반영할 때 기존 question_answer/answer_change를 기록하고 DB 저장을 진행합니다.
+DB 저장 재시도/새로고침 후 미저장 답변 동기화는 이 이벤트를 다시 보내지 않습니다.
+DB 저장 실패 시 다음 문항 이동은 차단합니다. write_token과 DB 동기화 확인 기록은 이벤트에 넣지 않습니다.
 
 result_view는 결과 **조회**를 측정하므로 새로고침/재방문을 허용합니다. 결과 전환율은
 test_complete 또는 result_view의 고유 attempt_id 수를 사용하세요. 단순 result_view 총합은

@@ -51,8 +51,9 @@ test("every choice uses stable answer ID and the actual displayed position/label
     assert.equal(properties.question_id, h.questions[Math.floor(i / 2)].id);
     assert.equal(properties.question_index, Math.floor(i / 2) + 1);
     assert.equal(properties.answer_id, h.questions[Math.floor(i / 2)].choices[i % 2].id);
-    assert.equal(properties.display_position, i % 2 + 1);
-    assert.equal(properties.display_label, i % 2 === 0 ? "A" : "B");
+    const position = start.choiceDisplayOrder[properties.question_id].indexOf(properties.answer_id);
+    assert.equal(properties.display_position, position + 1);
+    assert.equal(properties.display_label, position === 0 ? "A" : "B");
   });
 });
 
@@ -101,8 +102,9 @@ test("counts and retry classification survive refresh and completion carries all
   assert.equal(event.top_sub_tag_2, completed.result.displaySubTags[1] ?? null);
 });
 
-test("actual startNew callback generates fresh retry UUID, saves before start, and consumes retry request", async () => {
-  const h = setup();
+test("actual startNew callback uses server retry UUID, saves before start, and consumes retry request", async () => {
+  const serverId = randomUUID();
+  const h = setup({ fetch: async () => Response.json({ attempt_id: serverId, write_token: "A".repeat(43) }, { status: 201 }) });
   const old = h.progress.createAttempt("old-attempt");
   h.tracking.trackRetry(old, true);
   assert.equal(h.tracking.hasRetryRequest(), true);
@@ -115,17 +117,17 @@ test("actual startNew callback generates fresh retry UUID, saves before start, a
   visit(source);
   let created;
   const dependencies = {
-    createAttempt: h.progress.createAttempt, crypto: { randomUUID }, window: h.window,
-    saveAttempt: h.progress.saveAttempt, clearRetryRequest: h.tracking.clearRetryRequest,
-    trackTestStart: (next, retry) => {
-      assert.equal(h.progress.restoreAttempt(h.window.localStorage.getItem(h.progress.TEST_STORAGE_KEY)).progress.attemptId, next.attemptId);
-      h.tracking.trackTestStart(next, retry);
-    },
+    completionDraft: { current: null }, setCompletionPending() {},
+    answerSaveLock: { current: false }, setAnswerStatus() {},
+    startDatabaseAttempt: h.load("src/lib/startDatabaseAttempt.ts").startDatabaseAttempt,
+    startLock: { current: false }, mounted: { current: true }, setIsStarting() {}, setNeedsNewStart() {},
     setProgress: (next) => { created = next; }, setScreen() {}, setConfirmRestart() {}, setError() {},
     setNotice() {}, setIsNavigating() {}, completionLock: { current: false },
   };
   const startNew = new Function("dependencies", `const { ${Object.keys(dependencies).join(",")} } = dependencies; return (${callback});`)(dependencies);
-  startNew("", true);
+  await startNew("", true);
+  assert.equal(created.attemptId, serverId);
+  assert.equal(h.progress.restoreAttempt(h.window.localStorage.getItem(h.progress.TEST_STORAGE_KEY)).progress.attemptId, serverId);
   assert.notEqual(created.attemptId, old.attemptId);
   assert.match(created.attemptId, /^[0-9a-f-]{36}$/);
   assert.equal(h.tracking.hasRetryRequest(), false);
@@ -171,7 +173,7 @@ test("actual question view effect ignores Strict Mode/rerender but records back 
   const effect = findEffect("TestRunner.tsx", "trackQuestionView");
   const state = {
     progress: h.progress.createAttempt("views"), screen: "questions", confirmRestart: false,
-    isNavigating: false, lastQuestionView: { current: null }, trackQuestionView: h.tracking.trackQuestionView,
+    isNavigating: false, isStarting: false, lastQuestionView: { current: null }, trackQuestionView: h.tracking.trackQuestionView,
   };
   effect(state);
   effect(state); // Strict Mode effect replay.

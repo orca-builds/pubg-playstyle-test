@@ -3,6 +3,8 @@ import { trackEvent } from "@/lib/analytics";
 import { readBrowserValue, writeBrowserValue } from "@/lib/browserStorage";
 import type { ScoringResult } from "@/lib/scoring";
 import type { CompletedAttempt, InProgressAttempt } from "@/types/testProgress";
+import type { CompletionMetrics } from "@/lib/completeDatabaseAttempt";
+import { getDisplayedChoices } from "@/lib/choiceDisplayOrder";
 
 type AttemptContext = { attemptId: string; testVersion: string };
 type Metrics = { answer_change_count: number; back_count: number; is_retry: boolean };
@@ -55,7 +57,7 @@ export function trackQuestionView(attempt: AttemptContext, index: number): void 
 
 export function trackAnswer(attempt: InProgressAttempt, answerId: string, saved: boolean): void {
   const question = orderedQuestions[attempt.currentQuestionIndex];
-  const position = question.choices.findIndex((choice) => choice.id === answerId) + 1;
+  const position = getDisplayedChoices(question, attempt.choiceDisplayOrder).findIndex((choice) => choice.id === answerId) + 1;
   if (!position) return;
   const common = { ...props(attempt), question_id: question.id, question_index: attempt.currentQuestionIndex + 1 };
   trackEvent("question_answer", {
@@ -79,10 +81,12 @@ export function trackBack(attempt: InProgressAttempt, nextIndex: number): void {
   });
 }
 
-export function trackTestComplete(attempt: CompletedAttempt, result: ScoringResult): void {
+export function trackTestComplete(attempt: CompletedAttempt, result: ScoringResult, completion?: CompletionMetrics): void {
   trackEvent("test_complete", {
     ...props(attempt), ...getAttemptMetrics(attempt.attemptId),
     duration_seconds: Math.max(0, (Date.parse(attempt.completedAt) - Date.parse(attempt.startedAt)) / 1000),
+    ...(completion ? { duration_seconds: completion.duration_seconds,
+      answer_change_count: completion.answer_change_count, back_count: completion.back_count } : {}),
     main_type: result.mainResult.id,
     main_scores: { ...result.mainScores },
     top_sub_tag_1: result.displaySubTags[0] ?? null,

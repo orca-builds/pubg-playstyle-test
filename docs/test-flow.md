@@ -28,7 +28,8 @@ q14 → q24 → q05 → q20 → q10 → q15
 localStorage 키는 `pubg-playstyle-test:attempt`입니다. 한 번에 한 attempt만 보관합니다.
 
 선택지의 `choiceId`는 `q01-choice-1` 같은 고정 내부 ID입니다. 화면의 A/B는
-`QuestionCard`가 표시 인덱스로 생성하며, 현재 질문·선택지 순서는 그대로 유지합니다.
+`QuestionCard`가 표시 인덱스로 생성합니다. 질문 순서는 유지하고 새 attempt의 선택지 위치는
+24문항 중 정확히 12개를 뒤집습니다. 상세 저장/복구 규칙은 [선택지 표시 순서](choice-display-order.md)를 참고합니다.
 과거 `q01-a` 같은 ID가 포함된 저장값은 현재 질문 데이터 검증에서 `invalid`로 처리합니다.
 `/test`에서는 안내 후 새 테스트를 시작하고, `/result`에서는 복원 불가 안내를 표시합니다.
 이전 답변을 새 ID로 자동 변환하지 않으며 테스트 버전은 변경하지 않습니다.
@@ -41,13 +42,17 @@ localStorage 키는 `pubg-playstyle-test:attempt`입니다. 한 번에 한 attem
   currentQuestionIndex: 0, // 0부터 시작하는 화면 위치
   answers: [{ questionId: "q01", choiceId: "q01-choice-1" }],
   startedAt: "2026-09-08T10:00:00.000Z",
-  attemptId: "crypto.randomUUID()로 생성한 값",
+  attemptId: "start API가 서버에서 발급한 UUID",
   // completedAt: 완료 상태에만 추가
 }
 ```
 
 선택지를 바꾸면 해당 질문의 답변을 교체합니다. 점수는 저장하거나 누적하지 않습니다.
 선택·이동 때마다 전체 객체를 저장하고, 저장에 성공해야 화면 상태도 갱신합니다.
+선택은 로컬 반영 후 answer API로 저장하며 DB 저장 성공 전에는 다음/이전/결과 이동을 막습니다.
+저장 중에는 선택지를 잠시 비활성화하고 실패 시 로컬 선택과 수동 재시도 UI를 유지합니다.
+별도의 token 없는 answer-sync 기록으로 미저장 답변을 판별해 새로고침 후에도 동기화합니다.
+credential과 answer-sync는 진행 객체에 섞지 않습니다. 자세한 API/migration/QA는 `docs/db.md`에 있습니다.
 처음부터 다시하기는 확인 화면에서 확정한 뒤 저장 객체를 새 객체로 교체합니다.
 취소는 답변과 저장 상태를 바꾸지 않습니다.
 
@@ -65,7 +70,11 @@ localStorage 키는 `pubg-playstyle-test:attempt`입니다. 한 번에 한 attem
 ## 결과 연결과 오류
 
 마지막 화면에서 최종 답변 24개를 기존 `calculateScore`에 전달합니다.
-계산 성공 후 상태를 `completed`로 저장한 다음 `/result`로 이동합니다.
+계산 후 complete API를 호출하고 DB 완료 성공을 확인한 뒤 상태를 `completed`로 저장합니다.
+이어서 resultSnapshot 준비와 PostHog test_complete를 처리한 다음 `/result`로 이동합니다.
+완료 저장 실패 시 이동을 보류하고 답변/계산 결과를 유지하며 결과 보기로 재시도합니다.
+완료 응답 유실에 대비해 pending 기록이 있는 동안 답변 수정을 막습니다.
+API 계약·DB migration·QA는 `docs/complete-api.md`를 참고하세요.
 결과 화면은 저장된 답변을 다시 검증하고 `calculateScore`로 재계산하므로,
 별도의 점수 계산 구현이나 외부 저장소에 의존하지 않습니다.
 

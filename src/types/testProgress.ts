@@ -1,4 +1,5 @@
 import type { TestAnswer } from "@/lib/scoring";
+import type { ChoiceDisplayOrder } from "@/lib/choiceDisplayOrder";
 
 type ProgressBase = {
   readonly testVersion: string;
@@ -7,6 +8,7 @@ type ProgressBase = {
   readonly answers: readonly TestAnswer[];
   readonly startedAt: string;
   readonly attemptId: string;
+  readonly choiceDisplayOrder?: ChoiceDisplayOrder;
 };
 
 export type InProgressAttempt = ProgressBase & {

@@ -1,19 +1,21 @@
 import type { Question } from "@/types/test";
+import { getDisplayedChoices, type ChoiceDisplayOrder } from "@/lib/choiceDisplayOrder";
 
 type Props = {
   question: Question;
   selectedChoiceId?: string;
   onSelect: (choiceId: string) => void;
+  displayOrder?: ChoiceDisplayOrder;
 };
 
-export default function QuestionCard({ question, selectedChoiceId, onSelect }: Props) {
+export default function QuestionCard({ question, selectedChoiceId, onSelect, displayOrder }: Props) {
   return (
     <section aria-labelledby="question-title" className="space-y-6">
       <h2 id="question-title" tabIndex={-1} className="break-keep text-xl leading-relaxed font-semibold [overflow-wrap:anywhere] outline-none sm:text-2xl">
         {question.text}
       </h2>
       <div className="grid gap-3" role="group" aria-labelledby="question-title">
-        {question.choices.map((choice, index) => {
+        {getDisplayedChoices(question, displayOrder).map((choice, index) => {
           const selected = choice.id === selectedChoiceId;
           return (
             <button

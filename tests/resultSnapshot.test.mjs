@@ -178,6 +178,9 @@ function completionHandler({ failSave = false } = {}) {
   const events = [];
   let saveFails = failSave;
   const dependencies = {
+    completionDraft: { current: null }, mounted: { current: true }, setCompletionPending() {},
+    completeDatabaseAttempt: async () => { events.push("db-complete"); return undefined; }, clearPendingCompletion() {},
+    answerSaveLock: { current: false }, answerStatus: "ready",
     progress, orderedQuestions, completionLock: { current: false },
     ensureFresh: () => true, canGoNext: () => true,
     finishAttempt: (attempt) => { events.push("calculate"); return finishAttempt(attempt); },
@@ -203,26 +206,24 @@ function completionHandler({ failSave = false } = {}) {
   return { handler, events, allowSave: () => { saveFails = false; } };
 }
 
-test("실제 결과 보기 핸들러를 연속 호출해도 계산·저장·준비·이동은 한 번", () => {
+test("실제 결과 보기 핸들러를 연속 호출해도 계산·저장·준비·이동은 한 번", async () => {
   const { handler, events } = completionHandler();
-  handler();
-  handler();
-  handler();
-  assert.deepEqual(events, ["calculate", "save", "prepare", "navigate"]);
+  await Promise.all([handler(), handler(), handler()]);
+  assert.deepEqual(events, ["calculate", "db-complete", "save", "prepare", "navigate"]);
 });
 
-test("완료 저장 실패 시 이동하지 않으며 잠금을 풀어 재시도 가능", () => {
+test("완료 저장 실패 시 이동하지 않으며 잠금을 풀어 재시도 가능", async () => {
   const { handler, events, allowSave } = completionHandler({ failSave: true });
-  handler();
-  assert.deepEqual(events, ["calculate", "save"]);
+  await handler();
+  assert.deepEqual(events, ["calculate", "db-complete", "save"]);
   allowSave();
-  handler();
-  assert.deepEqual(events, ["calculate", "save", "calculate", "save", "prepare", "navigate"]);
+  await handler();
+  assert.deepEqual(events, ["calculate", "db-complete", "save", "db-complete", "save", "prepare", "navigate"]);
 });
 
 function renderResult(snapshot) {
   return renderToStaticMarkup(createElement(ResultContent, {
-    snapshot, onStartTest() {}, onRetryLoad() {},
+    snapshot, onStartTest() {}, onRetryLoad() {}, onShare() {},
   }));
 }
 
@@ -298,15 +299,15 @@ test("100/0부터 0/100까지 두 막대 비율 유지, 중앙선과 위치 마�
   }
 });
 
-test("이미지가 없으면 img 없이 공통 placeholder, 경로가 있으면 imageAlt 사용", () => {
+test("이미지가 없으면 img 없이 공통 placeholder, 실제 경로는 유형명 alt 사용", () => {
   const done = complete("image");
   const snapshot = { status: "ready", attemptId: "image", result: done.result };
-  const placeholder = renderResult(snapshot);
-  assert.ok(placeholder.includes("캐릭터 이미지 준비 중"));
-  assert.ok(!placeholder.includes("<img"));
-  const withImage = renderResult({ ...snapshot, result: {
-    ...done.result, mainResult: { ...done.result.mainResult, imageSrc: "/images/results/future.webp" },
+  const placeholder = renderResult({ ...snapshot, result: {
+    ...done.result, mainResult: { ...done.result.mainResult, imageSrc: null },
   } });
+  assert.ok(placeholder.includes("<svg"));
+  assert.ok(!placeholder.includes("<img"));
+  const withImage = renderResult(snapshot);
   assert.ok(withImage.includes("<img"));
   assert.ok(withImage.includes(`alt="${done.result.mainResult.imageAlt}"`));
   assert.ok(!withImage.includes("캐릭터 이미지 준비 중"));
@@ -325,17 +326,19 @@ test("초기화는 무표시, 결과 없음·손상·저장소 오류는 적절�
   }
 });
 
-test("공유 버튼은 비활성으로 준비 중 안내, 다시 하기는 전달된 시작 동작 사용", () => {
+test("공유와 다시 하기 버튼은 전달된 동작 사용", () => {
   const done = complete("buttons");
   let starts = 0;
+  let shares = 0;
   const tree = ResultContent({ snapshot: { status: "ready", attemptId: "buttons", result: done.result },
-    onStartTest() { starts++; }, onRetryLoad() {},
+    onStartTest() { starts++; }, onRetryLoad() {}, onShare() { shares++; },
   });
   const actions = tree.props.children.at(-1);
   const share = actions.props.children[0];
   const restart = actions.props.children[2];
-  assert.equal(share.props.disabled, true);
-  assert.equal(share.props.onClick, undefined);
+  assert.equal(share.props.disabled, false);
+  share.props.onClick();
+  assert.equal(shares, 1);
   assert.equal(restart.props.children, "다시 하기");
   restart.props.onClick();
   assert.equal(starts, 1);

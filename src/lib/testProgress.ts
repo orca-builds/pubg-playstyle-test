@@ -3,6 +3,7 @@ import { orderedQuestions, QUESTION_ORDER_KEY } from "@/data/questionOrder";
 import { calculateScore } from "@/lib/scoring";
 import type { TestAnswer } from "@/lib/scoring";
 import type { CompletedAttempt, InProgressAttempt, TestProgress } from "@/types/testProgress";
+import { createChoiceDisplayOrder, isChoiceDisplayOrder } from "@/lib/choiceDisplayOrder";
 
 export const TEST_STORAGE_KEY = "pubg-playstyle-test:attempt";
 export const ATTEMPT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -17,6 +18,7 @@ export function createAttempt(attemptId: string, now = Date.now()): InProgressAt
     questionOrderKey: QUESTION_ORDER_KEY,
     currentQuestionIndex: 0,
     answers: [],
+    choiceDisplayOrder: createChoiceDisplayOrder(),
     startedAt: new Date(now).toISOString(),
     attemptId,
     status: "in_progress",
@@ -50,6 +52,9 @@ export function restoreAttempt(raw: string | null, now = Date.now()): RestoreRes
     return { kind: "invalid" };
   }
 
+  if (value.choiceDisplayOrder !== undefined && !isChoiceDisplayOrder(value.choiceDisplayOrder)) {
+    return { kind: "invalid" };
+  }
   const answers: TestAnswer[] = [];
   const seen = new Set<string>();
   for (const answer of value.answers) {
@@ -73,6 +78,7 @@ export function restoreAttempt(raw: string | null, now = Date.now()): RestoreRes
     testVersion: questionSet.version, questionOrderKey: QUESTION_ORDER_KEY,
     currentQuestionIndex: value.currentQuestionIndex, answers,
     attemptId: value.attemptId, startedAt: value.startedAt,
+    ...(value.choiceDisplayOrder !== undefined ? { choiceDisplayOrder: value.choiceDisplayOrder } : {}),
   };
   if (value.status === "completed") {
     if (answers.length !== orderedQuestions.length || value.currentQuestionIndex !== orderedQuestions.length - 1 ||

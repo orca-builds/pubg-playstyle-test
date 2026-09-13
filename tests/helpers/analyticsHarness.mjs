@@ -47,7 +47,7 @@ export function createHarness(options = {}) {
     });
     const exports = {};
     modules.set(relativePath, exports);
-    new Function("exports", "require", "process", "window", "document", "navigator", "crypto", outputText)(
+    new Function("exports", "require", "process", "window", "document", "navigator", "crypto", "fetch", outputText)(
       exports,
       (id) => {
         if (options.mocks?.[id]) return options.mocks[id];
@@ -62,8 +62,9 @@ export function createHarness(options = {}) {
       },
       { env: options.env ?? configured }, window,
       { referrer: options.referrer ?? "" },
-      { userAgent: options.userAgent ?? "Desktop", maxTouchPoints: options.maxTouchPoints ?? 0 },
+      { userAgent: options.userAgent ?? "Desktop", maxTouchPoints: options.maxTouchPoints ?? 0, ...options.navigator },
       { randomUUID },
+      options.fetch ?? (() => { throw new Error("Unexpected network request in test"); }),
     );
     return exports;
   }

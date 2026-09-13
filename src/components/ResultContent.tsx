@@ -1,16 +1,22 @@
-import Image from "next/image";
+import ResultCharacter from "@/components/ResultCharacter";
 import MainAxisBars from "@/components/MainAxisBars";
 import type { ResultSnapshot } from "@/lib/resultSnapshot";
+import { SHARE_BUTTON_LABEL, SHARE_ERROR, type ShareOutcome } from "@/lib/shareResult";
 
 type Props = {
   snapshot: ResultSnapshot;
   onStartTest: () => void;
   onRetryLoad: () => void;
+  isStarting?: boolean;
+  startError?: string;
+  onShare: () => void;
+  isSharing?: boolean;
+  shareOutcome?: ShareOutcome | null;
 };
 
 const buttonClass = "min-h-12 w-full rounded-xl px-5 py-3 font-semibold focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700";
 
-export default function ResultContent({ snapshot, onStartTest, onRetryLoad }: Props) {
+export default function ResultContent({ snapshot, onStartTest, onRetryLoad, isStarting = false, startError = "", onShare, isSharing = false, shareOutcome = null }: Props) {
   // 저장값을 확인하기 전에는 결과 없음이나 짧은 loading 화면을 표시하지 않습니다.
   if (snapshot.status === "initializing") return null;
 
@@ -35,20 +41,6 @@ export default function ResultContent({ snapshot, onStartTest, onRetryLoad }: Pr
     <article className="space-y-7 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
       <p className="text-center text-sm font-semibold tracking-wide text-slate-600">당신의 배그 플레이 유형은</p>
 
-      <div className="mx-auto flex aspect-square w-full max-w-48 items-center justify-center overflow-hidden rounded-2xl bg-slate-100 sm:max-w-56">
-        {mainResult.imageSrc !== null ? (
-          <Image src={mainResult.imageSrc} alt={mainResult.imageAlt} width={224} height={224} className="h-full w-full object-contain" />
-        ) : (
-          <div className="flex flex-col items-center gap-2 p-5 text-slate-500">
-            <svg aria-hidden="true" viewBox="0 0 100 100" className="size-24 text-slate-300" fill="currentColor">
-              <circle cx="50" cy="30" r="18" />
-              <path d="M16 90v-8a34 34 0 0 1 68 0v8Z" />
-            </svg>
-            <span className="text-sm">캐릭터 이미지 준비 중</span>
-          </div>
-        )}
-      </div>
-
       <div className="space-y-4 text-center">
         <h2 className="text-3xl leading-snug font-extrabold text-slate-950 sm:text-4xl">{mainResult.name}</h2>
         <ul aria-label="보조 성향 태그" className="flex flex-wrap justify-center gap-2">
@@ -56,16 +48,22 @@ export default function ResultContent({ snapshot, onStartTest, onRetryLoad }: Pr
             <li key={tag} className="max-w-full rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-800">{tag}</li>
           ))}
         </ul>
-        <p className="text-lg leading-relaxed font-semibold text-slate-800">{mainResult.summary}</p>
       </div>
 
+      <ResultCharacter key={`${snapshot.attemptId}:${mainResult.id}`} src={mainResult.imageSrc} name={mainResult.name} />
+      <p className="text-center text-lg leading-relaxed font-semibold text-slate-800">{mainResult.summary}</p>
       <p className="whitespace-normal leading-7 text-slate-600 [overflow-wrap:anywhere]">{mainResult.description}</p>
       <MainAxisBars percentages={mainPercentages} />
 
       <div className="space-y-3 border-t border-slate-200 pt-6">
-        <button type="button" disabled aria-describedby="share-note" className={`${buttonClass} cursor-not-allowed bg-slate-200 text-slate-500`}>공유하기</button>
-        <p id="share-note" className="text-center text-sm text-slate-500">공유 기능은 준비 중입니다.</p>
-        <button type="button" onClick={onStartTest} className={`${buttonClass} border border-blue-700 text-blue-800 hover:bg-blue-50`}>다시 하기</button>
+        <button type="button" onClick={onShare} disabled={isSharing} aria-busy={isSharing} aria-describedby="share-note" className={`${buttonClass} bg-blue-700 text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50`}>{SHARE_BUTTON_LABEL}</button>
+        <p id="share-note" role={shareOutcome === "error" ? "alert" : "status"} className="min-h-5 text-center text-sm text-slate-600">
+          {shareOutcome === "copied" ? "복사했어요" : shareOutcome === "error" ? SHARE_ERROR : ""}
+        </p>
+        <button type="button" onClick={onStartTest} disabled={isStarting || isSharing} aria-busy={isStarting} className={`${buttonClass} border border-blue-700 text-blue-800 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50`}>
+          {isStarting ? "새 테스트 준비 중…" : startError ? "다시 하기 재시도" : "다시 하기"}
+        </button>
+        {startError && <p role="alert" className="text-sm leading-relaxed text-red-700">{startError}</p>}
       </div>
     </article>
   );

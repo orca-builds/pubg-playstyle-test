@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import ResultContent from "@/components/ResultContent";
 import {
@@ -8,12 +8,63 @@ import {
 } from "@/lib/resultSnapshot";
 import { trackEvent } from "@/lib/analytics";
 import { trackRetry } from "@/lib/testAnalytics";
+import { startDatabaseAttempt } from "@/lib/startDatabaseAttempt";
+import type { ResultSnapshot } from "@/lib/resultSnapshot";
+import { shareResult, type ShareOutcome } from "@/lib/shareResult";
 
 export default function ResultPreview() {
   const router = useRouter();
   const snapshot = useSyncExternalStore(subscribeToResult, getResultSnapshot, getServerResultSnapshot);
   const lastView = useRef<string | null>(null);
   const retrying = useRef(false);
+  const sharing = useRef(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareOutcome, setShareOutcome] = useState<ShareOutcome | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
+  const [startError, setStartError] = useState("");
+  const [previousResult, setPreviousResult] = useState<ResultSnapshot | null>(null);
+
+  async function handleShare() {
+    if (sharing.current || retrying.current) return;
+    const displayed = previousResult ?? snapshot;
+    if (displayed.status !== "ready") return;
+    sharing.current = true;
+    setIsSharing(true);
+    setShareOutcome(null);
+    try {
+      setShareOutcome(await shareResult({
+        attemptId: displayed.attemptId, testVersion: displayed.result.testVersion,
+        mainType: displayed.result.mainResult.id, typeName: displayed.result.mainResult.name,
+      }));
+    } catch {
+      setShareOutcome("error");
+    } finally {
+      sharing.current = false;
+      setIsSharing(false);
+    }
+  }
+
+  async function handleStartTest() {
+    if (retrying.current || sharing.current) return;
+    retrying.current = true;
+    if (snapshot.status !== "ready") {
+      router.push("/test");
+      return;
+    }
+    setPreviousResult(snapshot);
+    setIsStarting(true);
+    setStartError("");
+    trackRetry({ attemptId: snapshot.attemptId, testVersion: snapshot.result.testVersion });
+    try {
+      await startDatabaseAttempt(true);
+      // Keep the completed result visible until navigation, even after storage changes.
+      router.push("/test");
+    } catch {
+      retrying.current = false;
+      setIsStarting(false);
+      setStartError("새 테스트를 시작하지 못했습니다. 기존 결과는 유지됩니다. 연결 상태와 저장 공간을 확인하고 다시 시도해주세요.");
+    }
+  }
 
   useEffect(() => {
     if (snapshot.status !== "ready") {
@@ -33,15 +84,13 @@ export default function ResultPreview() {
       <div className="mx-auto w-full max-w-xl break-keep [overflow-wrap:anywhere]">
         <h1 className="sr-only">테스트 결과</h1>
         <ResultContent
-          snapshot={snapshot}
-          onStartTest={() => {
-            if (retrying.current) return;
-            retrying.current = true;
-            if (snapshot.status === "ready") {
-              trackRetry({ attemptId: snapshot.attemptId, testVersion: snapshot.result.testVersion }, true);
-            }
-            router.push("/test");
-          }}
+          snapshot={previousResult ?? snapshot}
+          onStartTest={handleStartTest}
+          isStarting={isStarting}
+          startError={startError}
+          onShare={handleShare}
+          isSharing={isSharing}
+          shareOutcome={shareOutcome}
           onRetryLoad={retryResultSnapshot}
         />
       </div>
