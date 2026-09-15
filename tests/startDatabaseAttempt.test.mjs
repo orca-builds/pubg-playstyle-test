@@ -69,7 +69,7 @@ test("new start posts existing visitor/version/order data once, stores server ID
   assert.equal(options.method, "POST");
   const { device_type, ...visitor } = h.load("src/lib/visitorContext.ts").getVisitorContext();
   assert.ok(device_type);
-  assert.deepEqual(JSON.parse(options.body), { ...visitor, test_version: "v1", is_retry: false,
+  assert.deepEqual(JSON.parse(options.body), { ...visitor, test_version: "v2", is_retry: false,
     question_order_key: h.load("src/data/questionOrder.ts").QUESTION_ORDER_KEY });
   const saved = h.progress.restoreAttempt(h.window.localStorage.getItem(h.progress.TEST_STORAGE_KEY)).progress;
   assert.equal(saved.attemptId, h.id);

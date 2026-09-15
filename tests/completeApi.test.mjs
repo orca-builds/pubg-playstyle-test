@@ -21,7 +21,7 @@ function setup(options = {}) {
       if (options.throw) throw new Error("private-db-secret");
       if (options.fail === path) return Response.json({ message: "private-db-secret", details: token }, { status: 500 });
       if (path === "/rest/v1/test_attempts") return Response.json(options.missing ? [] : [{
-        write_token_hash: hash, test_version: options.version ?? "v1",
+        write_token_hash: hash, test_version: options.version ?? "v2",
         question_order_key: h.load("src/data/questionOrder.ts").QUESTION_ORDER_KEY,
       }]);
       if (path === "/rest/v1/answers") return Response.json(options.answers ?? answers);
@@ -67,6 +67,7 @@ test("24 valid DB answers are recalculated and all canonical columns reach compl
   assert.ok(!JSON.stringify(body).includes(token));
   assert.ok(!JSON.stringify(body).includes(hash));
   const payload = JSON.parse(h.requests[2].request.body);
+  assert.equal(payload.p_test_version, "v2");
   assert.deepEqual(payload.p_result, h.columns);
   assert.deepEqual(payload.p_answers, h.answers);
   assert.equal(payload.p_verified_hash, hash);
@@ -118,7 +119,7 @@ test("wrong token is 403, missing attempt is 404, unsupported version is 409", a
   }
   assert.equal(h.requests.length, 3);
   assert.equal((await setup({ missing: true }).post()).status, 404);
-  assert.equal((await setup({ version: "old" }).post()).status, 409);
+  assert.equal((await setup({ version: "v1" }).post()).status, 409);
 });
 
 test("repeat completion returns already_completed and preserves the first timestamps/counts (RPC contract)", async () => {

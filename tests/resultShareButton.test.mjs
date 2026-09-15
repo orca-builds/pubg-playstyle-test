@@ -18,7 +18,7 @@ for (const outcome of ["shared", "copied", "cancelled", "error"]) {
       navigator: outcome === "copied" ? { clipboard: { writeText: invoke } } : { share: invoke },
       mocks: {
         react: {
-          useEffect() {},
+          useEffect(effect) { effect(); },
           useSyncExternalStore() { return snapshot; },
           useRef(initial) { const i = refIndex++; return refs[i] ??= { current: initial }; },
           useState(initial) {
@@ -63,6 +63,7 @@ for (const outcome of ["shared", "copied", "cancelled", "error"]) {
     assert.equal(ui.retry.props.disabled, false);
     assert.equal(ui.note.props.children, outcome === "copied" ? "복사했어요" : outcome === "error" ? "공유하지 못했어요. 다시 시도해주세요." : "");
     await h.load("src/lib/analytics.ts").initializeAnalytics();
-    assert.deepEqual(h.events.map(e => e.name), ["share_click", ...(outcome === "shared" ? ["share_success"] : outcome === "copied" ? ["copy_link"] : [])]);
+    assert.deepEqual(h.events.map(e => e.name), ["result_view", "share_click", ...(outcome === "shared" ? ["share_success"] : outcome === "copied" ? ["copy_link"] : [])]);
+    for (const event of h.events) assert.equal(event.properties.test_version, "v2");
   });
 }

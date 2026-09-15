@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { createHarness } from "./helpers/analyticsHarness.mjs";
 
-const context = { attemptId: "private-attempt", testVersion: "v1", mainType: "type-id", typeName: "돌격 대장" };
+const context = { attemptId: "private-attempt", testVersion: "v2", mainType: "type-id", typeName: "돌격 대장" };
 const href = "https://example.invalid/result?attempt_id=private-attempt&write_token=private-token&anonymous_id=private-visitor&session_id=private-session#raw-score";
 function setup(options = {}) {
   const h = createHarness(options);
@@ -84,7 +84,7 @@ test("actual handler blocks rapid duplicate clicks and retry overlap, clears bus
   let resolve, calls = 0;
   const state = {};
   const deps = { sharing: { current: false }, retrying: { current: false }, previousResult: null,
-    snapshot: { status: "ready", attemptId: context.attemptId, result: { testVersion: "v1", mainResult: { id: context.mainType, name: context.typeName } } },
+    snapshot: { status: "ready", attemptId: context.attemptId, result: { testVersion: "v2", mainResult: { id: context.mainType, name: context.typeName } } },
     setIsSharing: value => { state.busy = value; }, setShareOutcome: value => { state.outcome = value; },
     shareResult: value => { assert.deepEqual(value, context); calls++; return new Promise(done => { resolve = done; }); },
   };

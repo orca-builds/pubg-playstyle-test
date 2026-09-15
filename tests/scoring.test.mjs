@@ -56,10 +56,10 @@ test("24문항의 고정 내부 ID는 choice-1/choice-2이며 전체 48개가 �
   assert.equal(new Set(ids).size, 48);
 });
 
-// ID 변경 전에 기존 데이터와 계산 함수로 확보한 전체 결과입니다.
-const scoringBaseline = JSON.parse(readFileSync(new URL("./fixtures/scoring-before-choice-ids.json", import.meta.url), "utf8"));
+// v2 매핑을 반영한 전체 결과 회귀 fixture입니다.
+const scoringBaseline = JSON.parse(readFileSync(new URL("./fixtures/scoring-v2.json", import.meta.url), "utf8"));
 for (const { name, choiceIndexes, expected } of scoringBaseline) {
-  test(`${name}: ID 변경 전과 원점수·퍼센트·결과 유형·보조 성향 모두 동일`, () => {
+  test(`${name}: v2 원점수·퍼센트·결과 유형·보조 성향 회귀 검증`, () => {
     const answers = questionSet.questions.map((question, index) => ({
       questionId: question.id, choiceId: question.choices[choiceIndexes[index]].id,
     }));
@@ -79,7 +79,7 @@ test("legacy ID와 존재하지 않는 ID는 점수 계산에 사용하지 않�
 
 test("24개 답변의 원점수와 80/20 퍼센트", () => {
   const result = calculateScore(answersWith({ q05: 1 }));
-  assert.equal(result.testVersion, "v1");
+  assert.equal(result.testVersion, "v2");
   assert.deepEqual(result.mainScores, {
     combat: 4, position: 1, frontline: 5, support: 0,
     pressure: 5, design: 0, risk: 5, safe: 0,
@@ -90,7 +90,7 @@ test("24개 답변의 원점수와 80/20 퍼센트", () => {
   assert.equal(result.mainPercentages.frontline, 100);
   assert.deepEqual(result.subScores, {
     mainBody: 2, flank: 0, hotdrop: 2, tail: 0, fullLoot: 2,
-    fastLoot: 0, center: 1, edge: 0, standardGear: 1, specialGear: 0,
+    fastLoot: 0, center: 2, edge: 0, standardGear: 2, specialGear: 0,
   });
   assert.equal(result.mainResult.name, "화끈한 돌격대장");
 });
@@ -173,7 +173,7 @@ test("강한 후보 5개 동률은 고정된 축 순서로 2개 선택", () => {
 });
 
 test("실제 응답에서 강한 후보 1개이면 해당 태그와 올라운더", () => {
-  const result = calculateScore(answersWith({ q13: 1, q15: 1, q23: 1, q24: 1 }));
+  const result = calculateScore(answersWith({ q13: 1, q14: 1, q23: 1, q24: 1 }));
   assert.deepEqual(result.displaySubTags, ["중앙 선점형", "올라운더"]);
 });
 

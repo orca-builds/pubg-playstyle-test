@@ -26,7 +26,7 @@ test("answers support one latest answer per question and cascading parent cleanu
   }
 });
 
-test("v1 score bounds fit INTEGER and every scoring trait has a nullable nonnegative column", () => {
+test("v2 score bounds fit INTEGER and every scoring trait has a nullable nonnegative column", () => {
   const { questionSet } = createHarness().load("src/data/questions.ts");
   const maxima = {};
   for (const question of questionSet.questions) {
@@ -50,7 +50,7 @@ test("v1 score bounds fit INTEGER and every scoring trait has a nullable nonnega
   assert.deepEqual(maxima, {
     combat: 5, position: 5, frontline: 5, support: 5, pressure: 5, mainBody: 2,
     design: 5, flank: 2, hotdrop: 2, tail: 2, risk: 5, safe: 5,
-    fullLoot: 2, fastLoot: 2, center: 1, edge: 1, standardGear: 1, specialGear: 2,
+    fullLoot: 2, fastLoot: 2, center: 2, edge: 2, standardGear: 2, specialGear: 2,
   });
 });
 

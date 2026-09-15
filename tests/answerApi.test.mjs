@@ -25,7 +25,7 @@ function setup(options = {}) {
         if (options.lookupError) return Response.json({ message: privateError }, { status: 500 });
         return Response.json(options.missing ? [] : [{ write_token_hash: hash,
           is_completed: options.completed ?? false,
-          test_version: options.version ?? "v1",
+          test_version: options.version ?? "v2",
           question_order_key: options.order ?? h.load("src/data/questionOrder.ts").QUESTION_ORDER_KEY }]);
       }
       if (options.writeError) return Response.json({ message: privateError, details: token }, { status: 500 });
@@ -64,7 +64,7 @@ test("answer route authenticates with real SDK lookup then sends an allowlisted 
   assert.equal(h.requests[0].url.searchParams.get("select"), "write_token_hash,is_completed,test_version,question_order_key");
   assert.equal(h.requests[1].url.pathname, "/rest/v1/rpc/save_attempt_answer");
   assert.deepEqual(JSON.parse(h.requests[1].request.body), { p_attempt_id: h.id, p_verified_hash: hash,
-    p_test_version: "v1", p_question_order_key: h.load("src/data/questionOrder.ts").QUESTION_ORDER_KEY,
+    p_test_version: "v2", p_question_order_key: h.load("src/data/questionOrder.ts").QUESTION_ORDER_KEY,
     p_question_id: h.body.question_id, p_answer_id: h.body.answer_id, p_question_index: 1 });
   assert.ok(!h.requests[1].request.body.includes(token));
 });
@@ -129,7 +129,7 @@ test("wrong tokens are consistently 403 and cannot write, including hash-as-toke
 
 test("missing attempts are 404; completed or unsupported version/order are 409 with no writes", async () => {
   for (const [options, status, error] of [[{ missing: true }, 404, "ATTEMPT_NOT_FOUND"],
-    [{ completed: true }, 409, "ATTEMPT_COMPLETED"], [{ version: "old" }, 409, "ATTEMPT_VERSION_MISMATCH"],
+    [{ completed: true }, 409, "ATTEMPT_COMPLETED"], [{ version: "v1" }, 409, "ATTEMPT_VERSION_MISMATCH"],
     [{ order: "old" }, 409, "ATTEMPT_VERSION_MISMATCH"]]) {
     const h = setup(options);
     const response = await h.post();

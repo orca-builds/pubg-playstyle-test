@@ -63,7 +63,7 @@ const subAxisOrder: readonly SubAxis[] = [
 function validateScores(scores: Readonly<Record<string, number>>) {
   for (const [trait, score] of Object.entries(scores)) {
     if (!Number.isSafeInteger(score) || score < 0) {
-      throw new ScoringError("INVALID_SCORE", `${trait}: v1 점수는 0 이상의 안전한 정수여야 합니다.`);
+      throw new ScoringError("INVALID_SCORE", `${trait}: v2 점수는 0 이상의 안전한 정수여야 합니다.`);
     }
   }
 }
@@ -144,10 +144,10 @@ export function calculateSubResult(scores: SubScores) {
   return { subScores: { ...scores }, subAxes, displaySubTags };
 }
 
-/** v1 최종 결과용 함수: 각 질문에 정확히 하나의 유효한 답변이 필요합니다. */
+/** v2 최종 결과용 함수: 각 질문에 정확히 하나의 유효한 답변이 필요합니다. */
 export function calculateScore(answers: readonly TestAnswer[]): ScoringResult {
-  if (questionSet.version !== "v1") {
-    throw new ScoringError("UNSUPPORTED_VERSION", "이 계산 함수는 v1 질문 데이터 전용입니다.");
+  if (questionSet.version !== "v2") {
+    throw new ScoringError("UNSUPPORTED_VERSION", "이 계산 함수는 v2 질문 데이터 전용입니다.");
   }
   if (!Array.isArray(answers)) {
     throw new ScoringError("INVALID_ANSWER", "답변 목록은 배열이어야 합니다.");
