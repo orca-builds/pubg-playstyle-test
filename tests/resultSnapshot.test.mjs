@@ -280,7 +280,7 @@ test("보조 태그 한 개·두 개와 긴 태그를 그대로 표시", () => {
   for (const tags of [["올라운더"], ["날개형", "올라운더"], ["날개형", "보따리형"], ["매우 긴 보조 성향 이름을 확인하는 태그"]]) {
     const html = renderResult({ status: "ready", attemptId: "tags", result: { ...done.result, displaySubTags: tags } });
     for (const tag of tags) assert.ok(html.includes(tag));
-    assert.ok(html.includes("flex-wrap"));
+    assert.ok(html.includes("세부 플레이 성향"));
   }
 });
 

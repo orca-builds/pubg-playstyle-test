@@ -42,14 +42,14 @@ export default function LoadingOverlayVisual({ open, title, description }: Loadi
       onKeyDown={(event) => {
         if (["Tab", " ", "ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End"].includes(event.key)) event.preventDefault();
       }}
-      className="fixed inset-0 z-[1000] flex touch-none flex-col items-center justify-center gap-5 overscroll-none bg-black/80 p-6 text-center text-white outline-none">
+      className="fixed inset-0 z-[1000] flex touch-none flex-col items-center justify-center gap-3 overscroll-none bg-black/85 p-4 text-center text-white outline-none">
       <h2 className="sr-only">{title}</h2>
       <Image src="/images/loading/loading-repair.png" alt="" width={1212} height={1297}
         loading="eager" sizes="(max-width: 640px) 75vw, 320px"
         className="h-auto max-h-[55dvh] w-[75vw] max-w-80 shrink-0 object-contain" />
       <p className="max-w-xs break-keep text-base font-medium leading-relaxed">{description}</p>
-      <div aria-hidden="true" className="h-1 w-48 max-w-full overflow-hidden rounded-full bg-white/20">
-        <div className="loading-bar-segment h-full w-1/3 rounded-full bg-amber-300" />
+      <div aria-hidden="true" className="h-1 w-48 max-w-full shrink-0 overflow-hidden rounded-full bg-white/15">
+        <div className="loading-bar-segment h-full w-1/3 rounded-full bg-amber-200" />
       </div>
     </div>
   );

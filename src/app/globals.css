@@ -25,6 +25,41 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* 버튼의 70% 이상이 화면에 처음 보인 뒤에만 두 번 강조합니다. */
+@media (prefers-reduced-motion: no-preference) {
+  .result-share-attention[data-share-attention="started"] {
+    animation: result-share-attention 800ms ease-in-out 800ms 2;
+  }
+
+  /* 자동 강조 중에도 사용자의 hover/tap을 우선합니다. */
+  @media (hover: hover) {
+    .result-share-attention:enabled:hover {
+      scale: 1.02 !important;
+      box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1) !important;
+    }
+  }
+
+  .result-share-attention:enabled:active {
+    scale: 0.98 !important;
+  }
+
+  .result-share-attention:disabled {
+    scale: 1 !important;
+    box-shadow: none !important;
+  }
+}
+
+@keyframes result-share-attention {
+  0%, 100% {
+    scale: 1;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.1);
+  }
+  50% {
+    scale: 1.015;
+    box-shadow: 0 3px 8px rgb(0 0 0 / 0.12);
+  }
+}
+
 .loading-bar-segment {
   animation: loading-bar-travel 1.4s ease-in-out infinite;
 }

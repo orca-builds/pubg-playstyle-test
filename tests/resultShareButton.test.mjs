@@ -61,7 +61,7 @@ for (const outcome of ["shared", "copied", "cancelled", "error"]) {
     ui = render();
     assert.equal(ui.share.props.disabled, false);
     assert.equal(ui.retry.props.disabled, false);
-    assert.equal(ui.note.props.children, outcome === "copied" ? "복사했어요" : outcome === "error" ? "공유하지 못했어요. 다시 시도해주세요." : "");
+    assert.equal(ui.note.props.children, outcome === "copied" ? "복사했어요" : outcome === "error" ? "공유하지 못했어요. 다시 시도해주세요." : "친구와 결과를 비교해보세요");
     await h.load("src/lib/analytics.ts").initializeAnalytics();
     assert.deepEqual(h.events.map(e => e.name), ["result_view", "share_click", ...(outcome === "shared" ? ["share_success"] : outcome === "copied" ? ["copy_link"] : [])]);
     for (const event of h.events) assert.equal(event.properties.test_version, "v2");

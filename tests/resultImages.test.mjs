@@ -43,7 +43,9 @@ test("missing/malformed sources render fallback; load errors preserve reserved s
   assert.equal(img.props.alt, "테스트 캐릭터 이미지");
   assert.equal(img.props.width, img.props.height);
   assert.match(img.props.className, /object-contain/);
-  assert.match(tree.props.className, /aspect-square w-full max-w-48/);
+  assert.match(tree.props.className, /aspect-square w-full max-w-\[280px\]/);
+  assert.match(tree.props.className, /sm:max-w-\[304px\]/);
+  assert.equal(img.props.width, 304);
   img.props.onError();
   const fallback = Character({ src, name: "테스트" });
   assert.equal(fallback.props.children.type, "svg");
@@ -52,7 +54,7 @@ test("missing/malformed sources render fallback; load errors preserve reserved s
   assert.equal(next.props.children.props.alt, "다른 결과 캐릭터 이미지");
 });
 
-test("result content renders mapped image below name/tags and switches image/key for a new attempt", () => {
+test("result content renders mapped image below name and above details and switches image/key for a new attempt", () => {
   const h = createHarness();
   const Content = h.load("src/components/ResultContent.tsx").default;
   const results = Object.values(h.load("src/data/resultTypes.ts").resultTypes);
@@ -69,7 +71,7 @@ test("result content renders mapped image below name/tags and switches image/key
   for (const tree of trees) {
     const html = renderToStaticMarkup(tree);
     assert.ok(html.indexOf("<h2") < html.indexOf("<img"));
-    assert.ok(html.indexOf("보조 성향 태그") < html.indexOf("<img"));
+    assert.ok(html.indexOf("<img") < html.indexOf("보조 성향 태그"));
     assert.ok(html.includes("object-contain"));
   }
   // Malformed result snapshots keep the existing safe result recovery UI.
