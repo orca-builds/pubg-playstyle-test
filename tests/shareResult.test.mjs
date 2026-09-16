@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { createHarness } from "./helpers/analyticsHarness.mjs";
 
-const context = { attemptId: "private-attempt", testVersion: "v2", mainType: "type-id", typeName: "돌격 대장" };
+const context = { attemptId: "private-attempt", testVersion: "v2", mainType: "combat-frontline-pressure-risk", typeName: "화끈한 돌격대장" };
 const href = "https://example.invalid/result?attempt_id=private-attempt&write_token=private-token&anonymous_id=private-visitor&session_id=private-session#raw-score";
 function setup(options = {}) {
   const h = createHarness(options);
@@ -16,9 +16,9 @@ test("Web Share receives only title/text/public landing URL and records click th
   let payload;
   const browser = { async share(data) { assert.equal(this, browser); payload = data; } };
   assert.equal(await h.shareResult(context, browser, href), "shared");
-  assert.deepEqual(payload, { title: "PUBG 플레이스타일 테스트",
-    text: "내 배그 플레이 유형은 돌격 대장!\n너는 어떤 유형인지 한번 해봐 👇",
-    url: "https://example.invalid/?utm_source=share&utm_medium=user_share&utm_campaign=launch" });
+  assert.deepEqual(payload, { title: "내 배그 플레이 유형은 화끈한 돌격대장! 너는 어떤 유형일까?",
+    text: "내 배그 플레이 유형은 화끈한 돌격대장! 너는 어떤 유형일까?",
+    url: `https://example.invalid/share/${context.mainType}?utm_source=share&utm_medium=user_share&utm_campaign=launch` });
   assert.ok(!JSON.stringify(payload).includes("private-"));
   assert.ok(!JSON.stringify(payload).includes("raw-score"));
   await h.init();
@@ -28,6 +28,19 @@ test("Web Share receives only title/text/public landing URL and records click th
     assert.equal(e.properties.main_type, context.mainType);
     assert.equal(e.properties.share_method, "web_share");
     assert.ok(!JSON.stringify(e).includes("private-token"));
+  }
+});
+
+test("all 16 result names use the single-line share title without a separate long body", () => {
+  const h = setup();
+  const results = Object.values(h.load("src/data/resultTypes.ts").resultTypes);
+  assert.equal(results.length, 16);
+  for (const result of results) {
+    const payload = h.createSharePayload(result.name, href, result.id);
+    assert.equal(payload.title, `내 배그 플레이 유형은 ${result.name}! 너는 어떤 유형일까?`);
+    assert.doesNotMatch(payload.title, /[\r\n]/);
+    assert.equal(payload.text, payload.title);
+    assert.equal(payload.url, `https://example.invalid/share/${result.id}?utm_source=share&utm_medium=user_share&utm_campaign=launch`);
   }
 });
 
@@ -45,7 +58,7 @@ test("unsupported Web Share copies text and URL and records copy_link only after
   const h = setup();
   let copied;
   assert.equal(await h.shareResult(context, { clipboard: { async writeText(value) { copied = value; } } }, href), "copied");
-  const payload = h.createSharePayload(context.typeName, href);
+  const payload = h.createSharePayload(context.typeName, href, context.mainType);
   assert.equal(copied, `${payload.text}\n${payload.url}`);
   await h.init();
   assert.deepEqual(h.events.map(e => [e.name, e.properties.share_method]), [

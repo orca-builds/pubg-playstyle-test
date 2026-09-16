@@ -19,14 +19,16 @@ export const metadata: Metadata = {
   description: "24개의 상황 질문으로 알아보는 나의 PUBG 플레이스타일",
   openGraph: {
     title: "PUBG 플레이스타일 테스트",
-    description: "24개의 상황 질문으로 알아보는 나의 PUBG 플레이스타일",
+    description: "",
     type: "website",
     siteName: "PUBG 플레이스타일 테스트",
+    images: ["/images/og/og-default.png"],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "PUBG 플레이스타일 테스트",
-    description: "24개의 상황 질문으로 알아보는 나의 PUBG 플레이스타일",
+    description: "",
+    images: ["/images/og/og-default.png"],
   },
 };
 

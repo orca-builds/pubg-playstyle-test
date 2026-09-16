@@ -1,16 +1,19 @@
 import { trackEvent } from "@/lib/analytics";
+import { resultTypes } from "@/data/resultTypes";
 
-export const SHARE_BUTTON_LABEL = "공유하기";
+export const SHARE_BUTTON_LABEL = "결과 공유하기";
 export const SHARE_ERROR = "공유하지 못했어요. 다시 시도해주세요.";
 
-export function createSharePayload(typeName: string, currentUrl: string) {
-  const url = new URL("/", new URL(currentUrl).origin);
+export function createSharePayload(typeName: string, currentUrl: string, mainType: string) {
+  const title = `내 배그 플레이 유형은 ${typeName}! 너는 어떤 유형일까?`;
+  const path = Object.prototype.hasOwnProperty.call(resultTypes, mainType) ? `/share/${mainType}` : "/";
+  const url = new URL(path, new URL(currentUrl).origin);
   url.search = new URLSearchParams({
     utm_source: "share", utm_medium: "user_share", utm_campaign: "launch",
   }).toString();
   return {
-    title: "PUBG 플레이스타일 테스트",
-    text: `내 배그 플레이 유형은 ${typeName}!\n너는 어떤 유형인지 한번 해봐 👇`,
+    title,
+    text: title,
     url: url.toString(),
   };
 }
@@ -34,7 +37,7 @@ export async function shareResult(
   };
   trackEvent("share_click", properties);
   try {
-    const payload = createSharePayload(context.typeName, currentUrl);
+    const payload = createSharePayload(context.typeName, currentUrl, context.mainType);
     if (method === "web_share") {
       // Invoke within the click's user activation; do not await analytics first.
       await browser.share!(payload);

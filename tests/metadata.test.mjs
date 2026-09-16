@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { existsSync, readFileSync } from "node:fs";
 import { createHarness } from "./helpers/analyticsHarness.mjs";
 
-test("root layout supplies service metadata without nonexistent share images", () => {
+test("root layout uses the common OG image and file-based helmet icons", () => {
   const h = createHarness({
     ssr: true,
     mocks: {
@@ -20,6 +21,13 @@ test("root layout supplies service metadata without nonexistent share images", (
   assert.equal(metadata.metadataBase.href, "https://pubg-playstyle-test.vercel.app/");
   assert.equal(metadata.title, title);
   assert.equal(metadata.description, description);
-  assert.deepEqual(metadata.openGraph, { title, description, type: "website", siteName: title });
-  assert.deepEqual(metadata.twitter, { card: "summary", title, description });
+  const images = ["/images/og/og-default.png"];
+  assert.deepEqual(metadata.openGraph, { title, description: "", type: "website", siteName: title, images });
+  assert.deepEqual(metadata.twitter, { card: "summary_large_image", title, description: "", images });
+  assert.equal(metadata.icons, undefined);
+  assert.equal(existsSync(new URL("../src/app/favicon.ico", import.meta.url)), false);
+  for (const path of ["public/images/og/og-default.png", "src/app/icon.png", "src/app/apple-icon.png"]) {
+    const png = readFileSync(new URL(`../${path}`, import.meta.url));
+    assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+  }
 });
