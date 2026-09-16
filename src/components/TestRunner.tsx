@@ -23,6 +23,7 @@ import { clearPendingCompletion, completeDatabaseAttempt, hasPendingCompletion }
 
 const buttonClass = "min-h-12 rounded-lg border border-slate-400 px-5 py-3 font-semibold focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 disabled:cursor-not-allowed disabled:opacity-40";
 const primaryClass = `${buttonClass} border-blue-700 bg-blue-700 text-white hover:bg-blue-800`;
+const navigationClass = "min-h-11 rounded-lg border px-4 py-2.5 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500";
 
 export default function TestRunner() {
   const router = useRouter();
@@ -185,6 +186,11 @@ export default function TestRunner() {
   }
 
   function handleSelect(choiceId: string) {
+    if (!progress) return;
+    const questionId = orderedQuestions[progress.currentQuestionIndex].id;
+    const currentAnswerId = progress.answers.find(answer => answer.questionId === questionId)?.choiceId;
+    // 이미 선택한 내부 ID는 저장, Analytics, queue를 모두 건너뜁니다.
+    if (currentAnswerId === choiceId) return;
     if (completionPending) return;
     if (!completionLock.current && progress && ensureFresh()) {
       const answered = selectAnswer(progress, choiceId);
@@ -285,16 +291,18 @@ export default function TestRunner() {
   const loadingOpen = isStarting || isNavigating || (screen === "loading" && !error && !needsNewStart);
 
   return (
-    <main lang="ko" className="flex min-h-dvh flex-col bg-slate-50 px-4 pt-6 text-slate-950 sm:pt-10">
+    <main lang="ko" className="flex h-dvh flex-col overflow-hidden bg-slate-50 px-4 text-slate-950">
       <LoadingOverlay open={loadingOpen} failed={!loadingOpen && (Boolean(error) || answerStatus === "error")} title={isNavigating ? "결과 생성 중" : "테스트 준비 중"}
         description={isNavigating ? "플레이스타일을 정리하고 있어요." : "문항을 준비하고 있어요."} />
-      <div inert={loadingOpen} className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6">
-        <header className="space-y-3">
-          <h1 className="text-2xl font-bold">PUBG 플레이스타일 테스트</h1>
-          <p className="break-keep leading-relaxed text-slate-600 [overflow-wrap:anywhere]">정답은 없습니다.<br />잘하는 플레이보다 평소 실제 게임에서 내가 더 자주 하는 선택을 골라주세요.</p>
+      <div inert={loadingOpen} className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-y-contain px-1 pt-4 pb-6 sm:pt-6">
+        <header className="space-y-1.5">
+          <h1 className="text-lg font-bold sm:text-xl">PUBG 플레이스타일 테스트</h1>
+          <p className="break-keep text-sm leading-6 text-slate-600 [overflow-wrap:anywhere]">평소 실제 플레이에 가까운 선택을 골라주세요.</p>
+          {progress?.currentQuestionIndex === 0 && <p className="text-xs leading-5 text-slate-500">정답은 없습니다.</p>}
         </header>
 
-        {notice && <p role="status" className="rounded-lg border border-slate-300 bg-white p-4 leading-relaxed">{notice}</p>}
+        {notice && progress?.answers.length === 0 && <p role="status" className="rounded-lg bg-blue-50 px-3 py-2 text-sm leading-5 text-blue-800">{notice}</p>}
 
         {confirmRestart ? (
           <section aria-labelledby="restart-title" className="space-y-5 rounded-xl border border-slate-300 bg-white p-5">
@@ -326,11 +334,13 @@ export default function TestRunner() {
         ) : progress && question ? (
           <>
             <div className="space-y-2">
-              <p aria-live="polite" className="font-semibold">문항 {progress.currentQuestionIndex + 1} / {total}</p>
-              <progress aria-label="답변 완료 진행률" value={progress.answers.length} max={total} className="h-3 w-full accent-blue-700" />
-              <p className="text-sm text-slate-600">{progress.answers.length}개 답변 완료</p>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-sm" aria-live="polite">
+                <p className="font-semibold">문항 {progress.currentQuestionIndex + 1} / {total}</p>
+                <p className="text-slate-600">{progress.answers.length}개 완료</p>
+              </div>
+              <progress aria-label="답변 완료 진행률" value={progress.answers.length} max={total} className="block h-2 w-full accent-blue-700" />
             </div>
-            <fieldset disabled={isNavigating || isStarting || completionPending} className="pb-8">
+            <fieldset disabled={isNavigating || isStarting || completionPending} className="min-w-0">
               <QuestionCard question={question} displayOrder={progress.choiceDisplayOrder} selectedChoiceId={selected} onSelect={handleSelect} />
             </fieldset>
           </>
@@ -357,17 +367,19 @@ export default function TestRunner() {
           </div>
         )}
 
+        </div>
+
         {progress && !confirmRestart && (
-          <footer className="sticky bottom-0 z-10 -mx-4 mt-auto space-y-2 border-t border-slate-200 bg-slate-50 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <footer className="z-10 -mx-4 shrink-0 space-y-1 border-t border-slate-200 bg-slate-50 px-4 pt-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
             {screen === "questions" && (
               <nav aria-label="문항 이동" className="grid grid-cols-2 gap-3">
-                <button type="button" className={buttonClass} disabled={isNavigating || isStarting || completionPending || progress.currentQuestionIndex === 0} onClick={() => {
+                <button type="button" className={`${navigationClass} border-slate-300 bg-white text-slate-700 enabled:hover:bg-slate-100`} disabled={isNavigating || isStarting || completionPending || progress.currentQuestionIndex === 0} onClick={() => {
                   if (!completionPending && !completionLock.current && ensureFresh()) {
                     const next = moveQuestion(progress, -1);
                     if (commit(next)) trackBack(progress, next.currentQuestionIndex);
                   }
                 }}>이전</button>
-                <button type="button" className={primaryClass} disabled={isNavigating || isStarting || !canGoNext(progress)} onClick={() => void handleNext()}>
+                <button type="button" className={`${navigationClass} border-blue-700 bg-blue-700 text-white enabled:hover:bg-blue-800`} disabled={isNavigating || isStarting || !canGoNext(progress)} onClick={() => void handleNext()}>
                   {progress.currentQuestionIndex === total - 1 ? "결과 보기" : "다음"}
                 </button>
               </nav>

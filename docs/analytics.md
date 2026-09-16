@@ -61,7 +61,7 @@ question_answer의 display_position/display_label은 progress.choiceDisplayOrder
 | cta_click | 랜딩의 테스트 시작하기 Link 클릭 | 클릭마다 1회, 기존 진행이 있으면 원래 복구 화면으로 이동 |
 | test_start | 공통 startDatabaseAttempt의 서버 발급·credential·진행 저장 성공 직후 | attempt당 1회, is_retry. 복구 시 과거 start를 소급 전송하지 않음 |
 | question_view | TestRunner에서 질문이 실제 표시되는 effect | question_id/index/total_questions. 같은 attempt+문항의 재렌더는 억제, 이전으로 재방문·확인창 취소 후 재표시는 새 view |
-| question_answer | 유효한 선택지 클릭 handler | question_id/index, answer_id, display_position/label, answer_saved. 클릭당 1회, 같은 답 재클릭도 포함 |
+| question_answer | 최초 선택 또는 다른 답 클릭 handler | question_id/index, answer_id, display_position/label, answer_saved. 최초 선택·변경 시 1회, 이미 선택한 동일 내부 ID 재클릭은 제외 |
 | answer_change | 다른 답으로 실제 저장에 성공 | question_id/index, previous_answer_id/new_answer_id. 첫 선택·같은 답·저장 실패는 제외 |
 | question_back | 이전 버튼으로 실제 저장·이동 성공 | from_question_index/to_question_index. 성공한 이동만 back_count 증가 |
 | test_complete | DB complete API·로컬 완료 저장·snapshot 준비 성공 후, 결과 navigation 전 | attempt당 1회. 결과 복구·새로고침에서는 호출하지 않음 |
@@ -121,8 +121,8 @@ flag는 서버 수신 확인이 아닙니다. 초기화 실패·브라우저 종
 1. 새 브라우저 저장소로 `/?utm_source=discord&utm_medium=social&utm_campaign=launch` 방문.
    landing_view 1회와 공통 속성을 확인하고, 새로고침/랜딩 재방문으로 추가되지 않는지 확인합니다.
 2. CTA 클릭 후 cta_click → test_start → question_view 순서와 attempt_id를 확인합니다.
-3. 첫 문항 A → A → B 클릭: question_answer 3개, answer_change 1개.
-   표시 위치 1/A, 1/A, 2/B 및 qXX-choice-1/2가 실제 문항과 일치해야 합니다.
+3. 첫 문항 A → A → B 클릭: question_answer 2개, answer_change 1개. 동일 답 재클릭은 로컬 저장·queue enqueue·API 요청도 없으며, A/B 표시 위치가 아닌 내부 answer_id로 비교합니다. 저장 실패 재시도는 기존 저장 재시도 버튼을 사용합니다.
+   question_answer의 표시 위치는 1/A, 2/B이며, 내부 answer_id는 무작위 표시 순서를 반영한 실제 선택지와 일치해야 합니다.
 4. 다음 → 이전 이동: question_back의 1기준 인덱스와 재방문 question_view를 확인합니다.
 5. 중간 새로고침 후 이어서 하기: 같은 attempt_id/session_id, 새 test_start 없음, 이전 답변 복원.
 6. 24문항 완료: test_complete 1개와 duration/main_scores/태그/횟수 확인, result_view 1개.
