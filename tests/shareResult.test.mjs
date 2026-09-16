@@ -11,13 +11,12 @@ function setup(options = {}) {
   return { ...h, ...h.load("src/lib/shareResult.ts"), init: h.load("src/lib/analytics.ts").initializeAnalytics };
 }
 
-test("Web Share receives only title/text/public landing URL and records click then success", async () => {
+test("Web Share receives only the public share URL and records click then success", async () => {
   const h = setup();
   let payload;
   const browser = { async share(data) { assert.equal(this, browser); payload = data; } };
   assert.equal(await h.shareResult(context, browser, href), "shared");
-  assert.deepEqual(payload, { title: "내 배그 플레이 유형은 화끈한 돌격대장! 너는 어떤 유형일까?",
-    text: "내 배그 플레이 유형은 화끈한 돌격대장! 너는 어떤 유형일까?",
+  assert.deepEqual(payload, {
     url: `https://example.invalid/share/${context.mainType}?utm_source=share&utm_medium=user_share&utm_campaign=launch` });
   assert.ok(!JSON.stringify(payload).includes("private-"));
   assert.ok(!JSON.stringify(payload).includes("raw-score"));
@@ -31,15 +30,13 @@ test("Web Share receives only title/text/public landing URL and records click th
   }
 });
 
-test("all 16 result names use the single-line share title without a separate long body", () => {
+test("all 16 result types generate URL-only payloads with unchanged UTM", () => {
   const h = setup();
   const results = Object.values(h.load("src/data/resultTypes.ts").resultTypes);
   assert.equal(results.length, 16);
   for (const result of results) {
-    const payload = h.createSharePayload(result.name, href, result.id);
-    assert.equal(payload.title, `내 배그 플레이 유형은 ${result.name}! 너는 어떤 유형일까?`);
-    assert.doesNotMatch(payload.title, /[\r\n]/);
-    assert.equal(payload.text, payload.title);
+    const payload = h.createSharePayload(href, result.id);
+    assert.deepEqual(Object.keys(payload), ["url"]);
     assert.equal(payload.url, `https://example.invalid/share/${result.id}?utm_source=share&utm_medium=user_share&utm_campaign=launch`);
   }
 });
@@ -54,12 +51,12 @@ test("Web Share cancellation produces only click, no clipboard or error outcome"
   assert.deepEqual(h.events.map(e => e.name), ["share_click"]);
 });
 
-test("unsupported Web Share copies text and URL and records copy_link only after success", async () => {
+test("unsupported Web Share copies only URL and records copy_link only after success", async () => {
   const h = setup();
   let copied;
   assert.equal(await h.shareResult(context, { clipboard: { async writeText(value) { copied = value; } } }, href), "copied");
-  const payload = h.createSharePayload(context.typeName, href, context.mainType);
-  assert.equal(copied, `${payload.text}\n${payload.url}`);
+  const payload = h.createSharePayload(href, context.mainType);
+  assert.equal(copied, payload.url);
   await h.init();
   assert.deepEqual(h.events.map(e => [e.name, e.properties.share_method]), [
     ["share_click", "clipboard"], ["copy_link", "clipboard"],

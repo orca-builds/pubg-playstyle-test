@@ -43,7 +43,7 @@ for (const outcome of ["shared", "copied", "cancelled", "error"]) {
       const tree = content.type(content.props);
       const actions = tree.props.children.at(-1).props.children;
       assert.ok(!renderToStaticMarkup(tree).includes("공유 기능은 준비 중입니다."));
-      return { share: actions[0], retry: actions[2], note: actions[1] };
+      return { share: actions[0], retry: actions[3], note: actions[1] };
     }
     let ui = render();
     assert.equal(ui.share.props.disabled, false);
@@ -53,7 +53,10 @@ for (const outcome of ["shared", "copied", "cancelled", "error"]) {
     assert.equal(calls, 1);
     ui = render();
     assert.equal(ui.share.props.disabled, true);
-    assert.ok(JSON.stringify(payload).includes(snapshot.result.mainResult.name));
+    const expectedUrl = `https://example.invalid/share/${snapshot.result.mainResult.id}?utm_source=share&utm_medium=user_share&utm_campaign=launch`;
+    assert.deepEqual(payload, outcome === "copied" ? expectedUrl : { url: expectedUrl });
+    await h.load("src/lib/analytics.ts").initializeAnalytics();
+    assert.deepEqual(h.events.map(e => e.name), ["result_view", "share_click"]);
     if (outcome === "cancelled") reject(new DOMException("cancel", "AbortError"));
     else if (outcome === "error") reject(new Error("private-error"));
     else resolve();

@@ -29,7 +29,7 @@ test("unknown and prototype keys inherit common metadata and cannot enter genera
   const { createSharePayload } = h.load("src/lib/shareResult.ts");
   for (const mainType of ["unknown", "constructor", "__proto__", "../result?write_token=secret"]) {
     assert.deepEqual(await route.generateMetadata({ params: Promise.resolve({ mainType }) }), {});
-    const url = new URL(createSharePayload("유형", "https://example.invalid/", mainType).url);
+    const url = new URL(createSharePayload("https://example.invalid/", mainType).url);
     assert.equal(url.pathname, "/");
     assert.equal(url.searchParams.size, 3);
     assert.ok(!url.href.includes("secret"));
@@ -41,7 +41,7 @@ test("share landing captures UTM once and preserves attribution on test navigati
   const { createSharePayload } = h.load("src/lib/shareResult.ts");
   const { getVisitorContext } = h.load("src/lib/visitorContext.ts");
   const id = "position-support-design-risk";
-  const payload = createSharePayload("변수 운영가", "https://example.invalid/result?attempt_id=secret&anonymous_id=secret&session_id=secret&write_token=secret#private", id);
+  const payload = createSharePayload("https://example.invalid/result?attempt_id=secret&anonymous_id=secret&session_id=secret&write_token=secret#private", id);
   h.window.location.href = payload.url;
   const initial = getVisitorContext();
   assert.equal(initial.initial_source, "share");

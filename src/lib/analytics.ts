@@ -10,7 +10,8 @@ const pending: { eventName: string; properties: Record<string, unknown> }[] = []
 
 export type AnalyticsEvent = "landing_view" | "cta_click" | "test_start" |
   "question_view" | "question_answer" | "question_back" | "answer_change" |
-  "test_complete" | "result_view" | "retry_click" | "share_click" | "share_success" | "copy_link";
+  "test_complete" | "result_view" | "retry_click" | "share_click" | "share_success" | "copy_link" |
+  "result_image_save_click" | "result_image_save_success" | "result_image_save_error";
 type Once = { scope: "localStorage" | "sessionStorage"; key: string };
 
 function capture(eventName: string, properties: Record<string, unknown>): void {

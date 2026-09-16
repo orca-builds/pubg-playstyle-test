@@ -1,4 +1,5 @@
 import ResultCharacter from "@/components/ResultCharacter";
+import ResultImageSave from "@/components/ResultImageSave";
 import MainAxisBars from "@/components/MainAxisBars";
 import { supportTagDescriptions } from "@/data/supportTagDescriptions";
 import { observeShareAttention } from "@/lib/observeShareAttention";
@@ -77,6 +78,7 @@ export default function ResultContent({ snapshot, onStartTest, onRetryLoad, isSt
         <p id="share-note" role={shareOutcome === "error" ? "alert" : "status"} className="min-h-5 text-center text-sm text-slate-600">
           {shareOutcome === "copied" ? "복사했어요" : shareOutcome === "error" ? SHARE_ERROR : "친구와 결과를 비교해보세요"}
         </p>
+        <ResultImageSave key={snapshot.attemptId} result={snapshot.result} attemptId={snapshot.attemptId} disabled={isStarting || isSharing} />
         <button type="button" onClick={onStartTest} disabled={isStarting || isSharing} aria-busy={isStarting} className="min-h-11 w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
           {startError ? "다시 하기 재시도" : "다시 하기"}
         </button>

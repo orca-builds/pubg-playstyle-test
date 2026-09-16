@@ -336,7 +336,7 @@ test("공유와 다시 하기 버튼은 전달된 동작 사용", () => {
   });
   const actions = tree.props.children.at(-1);
   const share = actions.props.children[0];
-  const restart = actions.props.children[2];
+  const restart = actions.props.children[3];
   assert.equal(share.props.disabled, false);
   share.props.onClick();
   assert.equal(shares, 1);
