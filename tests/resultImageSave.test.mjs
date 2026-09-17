@@ -97,7 +97,7 @@ test("16 export cards use real name/image/summary and up to two actual tags, wit
   assert.equal(single.split("올라운더").length - 1, 1);
 });
 
-function setup({ userAgent = "Desktop", generate, download, viewError = false } = {}) {
+function setup({ userAgent = "Desktop", generate, download, directDownload, viewError = false } = {}) {
   const states = [], refs = [], downloads = [], effects = [];
   let key;
   const unmount = () => { effects.splice(0).forEach(effect => effect.cleanup?.()); };
@@ -121,6 +121,7 @@ function setup({ userAgent = "Desktop", generate, download, viewError = false } 
     "@/lib/resultImageFile": {
       ...createHarness({ userAgent }).load("src/lib/resultImageFile.ts"),
       downloadResultImage: file => { if (download) download(); downloads.push(file); },
+      downloadServerResultImage: directDownload ?? (() => { throw new Error("handoff blocked"); }),
     },
   } });
   const props = { result: result(h), attemptId: "image-attempt" };
@@ -145,7 +146,7 @@ function setup({ userAgent = "Desktop", generate, download, viewError = false } 
   return { ...h, props, render, unmount, downloads, image, view, get generations() { return generations; } };
 }
 
-test("iOS one tap opens original PNG modal; success means image availability, not Photos save", async t => {
+test("iOS handoff exception automatically opens PNG modal; success means availability, not Photos save", async t => {
   t.mock.method(URL, "createObjectURL", () => "blob:preview");
   const revoke = t.mock.method(URL, "revokeObjectURL", () => {});
   const h = setup({ userAgent: "iPhone" });
@@ -170,12 +171,62 @@ test("iOS one tap opens original PNG modal; success means image availability, no
   await tree.props.children[0].props.onClick();
   assert.equal(h.generations, 1);
   assert.deepEqual(h.events.map(e => e.name), ["result_image_save_click", "result_image_save_success"]);
+  assert.equal(h.events.at(-1).properties.save_method, "preview_fallback");
   modal.props.children[0].props.children[1].props.onClick();
   assert.equal(h.render().props.children[2], null);
   assert.equal(h.view.open, false);
   assert.equal(revoke.mock.callCount(), 1);
   h.unmount();
   assert.equal(revoke.mock.callCount(), 1);
+});
+
+test("iOS direct server handoff runs in first tap and silent failure retains manual preview without double success", async t => {
+  t.mock.method(URL, "createObjectURL", () => "blob:preview");
+  const revoke = t.mock.method(URL, "revokeObjectURL", () => {});
+  let attempts = 0, resolve;
+  const h = setup({ userAgent: "iPhone", directDownload() { attempts++; },
+    generate: png => new Promise(done => { resolve = () => done(png); }),
+  });
+  await h.load("src/lib/analytics.ts").initializeAnalytics();
+  const button = h.render().props.children[0];
+  const pending = button.props.onClick();
+  assert.equal(attempts, 1); // Synchronous before the server request resolves.
+  await button.props.onClick();
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(attempts, 1);
+  assert.deepEqual(h.events.map(e => e.name), ["result_image_save_click"]);
+  resolve(); await pending;
+  const tree = h.render();
+  assert.equal(tree.props.children[2], null);
+  assert.equal(tree.props.children[3].props.children, "저장되지 않았나요? 이미지 보기");
+  assert.equal(h.downloads.length, 0); // No iOS Blob download.
+  assert.equal(h.events.at(-1).properties.save_method, "download");
+  tree.props.children[3].props.onClick(); h.render(); h.image.load();
+  assert.equal(h.view.open, true);
+  assert.equal(h.generations, 1);
+  assert.equal(h.events.filter(e => e.name === "result_image_save_success").length, 1);
+  h.unmount();
+  assert.equal(revoke.mock.callCount(), 1);
+});
+
+test("direct server anchor uses attachment route, safe filename and only public query values", () => {
+  let clicks = 0, removed = 0;
+  const link = { click() { clicks++; }, remove() { removed++; } };
+  const h = createHarness({ document: { createElement: () => link, body: { appendChild() {} } } });
+  const resultValue = result(h);
+  const { downloadServerResultImage, resultImageFilename } = h.load("src/lib/resultImageFile.ts");
+  downloadServerResultImage(resultValue);
+  assert.equal(clicks, 1);
+  assert.equal(removed, 1);
+  const url = new URL(link.href, "https://example.invalid");
+  assert.equal(url.pathname, "/api/result-image/download");
+  assert.deepEqual([...new Set(url.searchParams.keys())], ["main_type", "tag"]);
+  assert.equal(url.searchParams.get("main_type"), resultValue.mainResult.id);
+  assert.equal(link.download, resultImageFilename(resultValue.mainResult.name));
+  assert.equal(link.target, "_blank");
+  link.click = () => { throw new Error("blocked"); };
+  assert.throws(() => downloadServerResultImage(resultValue), /blocked/);
+  assert.equal(removed, 2);
 });
 
 test("iOS generation/preload errors and URL failure never open a view and allow retry", async t => {

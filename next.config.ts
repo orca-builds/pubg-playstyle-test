@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
   reactCompiler: true,
   outputFileTracingIncludes: {
     "/api/result-image": ["./public/images/results/*.png", "./src/app/icon.png", "./assets/result-image/*"],
+    "/api/result-image/download": ["./public/images/results/*.png", "./src/app/icon.png", "./assets/result-image/*"],
   },
 };
 

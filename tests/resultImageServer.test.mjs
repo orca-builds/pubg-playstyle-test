@@ -5,6 +5,29 @@ import { createHarness } from "./helpers/analyticsHarness.mjs";
 const mainType = "combat-frontline-pressure-risk";
 const query = `main_type=${mainType}&tag=mainBodyFlank.mainBody&tag=hotdropTail.hotdrop`;
 
+test("attachment mode reuses identical PNG and supplies safe UTF-8 filename without extra URL data", async () => {
+  const h = createHarness();
+  const preview = h.load("src/app/api/result-image/route.ts").GET;
+  const download = h.load("src/app/api/result-image/download/route.ts").GET;
+  const normal = await preview(new Request(`https://example.invalid/api/result-image?${query}`));
+  const attachment = await download(new Request(`https://example.invalid/api/result-image/download?${query}`));
+  assert.equal(attachment.status, 200);
+  assert.equal(attachment.headers.get("content-type"), "image/png");
+  const name = h.load("src/lib/resultImageFile.ts").resultImageFilename(h.load("src/data/resultTypes.ts").resultTypes[mainType].name);
+  assert.equal(decodeURIComponent(attachment.headers.get("content-disposition").split("filename*=UTF-8''")[1]), name);
+  assert.match(attachment.headers.get("content-disposition"), /^attachment; filename="pubg-playstyle-result.png";/);
+  assert.equal(normal.headers.get("content-disposition"), null);
+  assert.deepEqual(Buffer.from(await attachment.arrayBuffer()), Buffer.from(await normal.arrayBuffer()));
+  assert.equal((await download(new Request(`https://example.invalid/api/result-image/download?${query}&attempt_id=private`))).status, 400);
+});
+
+test("attachment route preserves renderer failures without marking an error response as a download", async () => {
+  const h = createHarness({ mocks: { "@/app/api/result-image/route": { GET: async () => new Response("Image generation failed", { status: 500 }) } } });
+  const response = await h.load("src/app/api/result-image/download/route.ts").GET(new Request(`https://example.invalid/api/result-image/download?${query}`));
+  assert.equal(response.status, 500);
+  assert.equal(response.headers.get("content-disposition"), null);
+});
+
 test("all 16 server cards look up canonical text and embed local character and helmet", async () => {
   const cards = [];
   const h = createHarness({ mocks: { "next/og": { ImageResponse: class {

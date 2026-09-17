@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ScoringResult } from "@/lib/scoring";
 import { trackEvent } from "@/lib/analytics";
-import { downloadResultImage, isIOSBrowser, resultImageFilename } from "@/lib/resultImageFile";
+import { downloadResultImage, downloadServerResultImage, isIOSBrowser, resultImageFilename } from "@/lib/resultImageFile";
 
 type Props = { result: ScoringResult; attemptId: string; disabled?: boolean };
 
@@ -17,6 +17,8 @@ function ResultImageSaveButton({ result, attemptId, disabled = false }: Props) {
   const [failed, setFailed] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [ios, setIOS] = useState(false);
+  const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
+  const successRecorded = useRef(false);
   const prepared = useRef<string | null>(null);
   const dialog = useRef<HTMLDialogElement | null>(null);
   const preview = useRef<HTMLImageElement | null>(null);
@@ -44,7 +46,10 @@ function ResultImageSaveButton({ result, attemptId, disabled = false }: Props) {
       clearTimeout(timer);
       // iOS success means a visible, loaded image is available for saving.
       // The browser cannot confirm whether the user saved it to Photos.
-      trackEvent(success ? "result_image_save_success" : "result_image_save_error", properties);
+      if (!success || !successRecorded.current) {
+        trackEvent(success ? "result_image_save_success" : "result_image_save_error", { ...properties, save_method: "preview_fallback" });
+        if (success) successRecorded.current = true;
+      }
       if (!success) {
         if (prepared.current) URL.revokeObjectURL(prepared.current);
         prepared.current = null;
@@ -74,10 +79,15 @@ function ResultImageSaveButton({ result, attemptId, disabled = false }: Props) {
     if (prepared.current) URL.revokeObjectURL(prepared.current);
     prepared.current = null;
     setImageUrl(null);
+    setFallbackUrl(null);
   }
 
   async function handleSave() {
-    if (lock.current || disabled || prepared.current || !mounted.current) return;
+    if (lock.current || disabled || imageUrl || (prepared.current && !fallbackUrl) || !mounted.current) return;
+    if (prepared.current) URL.revokeObjectURL(prepared.current);
+    prepared.current = null;
+    setFallbackUrl(null);
+    successRecorded.current = false;
     lock.current = true;
     setBusy(true);
     setFailed(false);
@@ -86,6 +96,13 @@ function ResultImageSaveButton({ result, attemptId, disabled = false }: Props) {
     setIOS(needsImageView);
     trackEvent("result_image_save_click", properties);
     try {
+      let handedOff = false;
+      if (needsImageView) {
+        try {
+          downloadServerResultImage(result);
+          handedOff = true;
+        } catch { /* A detectable handoff failure automatically opens the preview below. */ }
+      }
       const { createResultImage } = await import("@/lib/createResultImage");
       const blob = await createResultImage(result);
       if (!mounted.current) return;
@@ -93,7 +110,12 @@ function ResultImageSaveButton({ result, attemptId, disabled = false }: Props) {
       if (needsImageView) {
         const url = URL.createObjectURL(blob);
         prepared.current = url;
-        setImageUrl(url);
+        if (handedOff) {
+          setFallbackUrl(url);
+          // PNG validation + handoff only. iOS may silently ignore it; Files is unobservable.
+          trackEvent("result_image_save_success", { ...properties, save_method: "download" });
+          successRecorded.current = true;
+        } else setImageUrl(url);
         return;
       }
       downloadResultImage(blob, filename);
@@ -104,7 +126,8 @@ function ResultImageSaveButton({ result, attemptId, disabled = false }: Props) {
       if (prepared.current) URL.revokeObjectURL(prepared.current);
       prepared.current = null;
       setImageUrl(null);
-      trackEvent("result_image_save_error", properties);
+      setFallbackUrl(null);
+      trackEvent("result_image_save_error", needsImageView ? { ...properties, save_method: "download" } : properties);
       if (mounted.current) setFailed(true);
     } finally {
       lock.current = false;
@@ -129,5 +152,9 @@ function ResultImageSaveButton({ result, attemptId, disabled = false }: Props) {
       <img ref={preview} src={imageUrl} alt={`${result.mainResult.name} 결과 이미지`} width={1080} height={1350}
         className="block h-auto w-full" style={{ WebkitTouchCallout: "default" }} />
     </dialog>}
+    {fallbackUrl && <button type="button" className="min-h-11 w-full text-sm text-blue-800 underline"
+      onClick={() => { setImageUrl(fallbackUrl); setFallbackUrl(null); }}>
+      저장되지 않았나요? 이미지 보기
+    </button>}
   </div>;
 }
