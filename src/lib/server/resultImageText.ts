@@ -1,3 +1,4 @@
+import "server-only";
 import loadFont from "next/dist/compiled/@next/font/dist/fontkit";
 import { splitImageText } from "@/lib/splitImageText";
 import type { ResultType } from "@/types/test";

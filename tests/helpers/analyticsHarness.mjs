@@ -51,6 +51,8 @@ export function createHarness(options = {}) {
       exports,
       (id) => {
         if (options.mocks?.[id]) return options.mocks[id];
+        // Server modules are intentionally executed in this Node test harness.
+        if (id === "server-only") return {};
         if (id === "posthog-js") {
           imports += 1;
           if (options.loadError) throw new Error("simulated load failure");

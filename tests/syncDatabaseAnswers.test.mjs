@@ -3,6 +3,35 @@ import test from "node:test";
 import { randomUUID } from "node:crypto";
 import { setup, saved, tick, token } from "./helpers/answerQueueHarness.mjs";
 
+test("answer timeout preserves all local choices, blocks Q24 completion, and drains on retry", async t => {
+  const controller = new AbortController();
+  let fail = true;
+  t.mock.method(AbortSignal, "timeout", ms => { assert.equal(ms, 15_000); return fail ? controller.signal : new AbortController().signal; });
+  const h = setup({ fetch: async (_, init) => {
+    if (!fail) return saved(init);
+    return new Promise((_, reject) => init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true }));
+  } });
+  for (const [index, question] of h.questions.entries()) {
+    h.render().handleSelect(question.choices[0].id);
+    if (index < 23) await h.render().handleNext();
+  }
+  const before = h.window.localStorage.getItem(h.progressLib.TEST_STORAGE_KEY);
+  const pending = h.render().handleNext();
+  controller.abort(new DOMException("timeout", "TimeoutError"));
+  await pending;
+  assert.equal(h.state.answerStatus, "error");
+  assert.equal(h.state.navigating, false);
+  assert.equal(h.state.route, "");
+  assert.deepEqual(h.calls, []);
+  assert.equal(h.window.localStorage.getItem(h.progressLib.TEST_STORAGE_KEY), before);
+  await h.load("src/lib/analytics.ts").initializeAnalytics();
+  assert.equal(h.events.filter(e => e.name === "test_complete").length, 0);
+  fail = false;
+  await h.render().handleNext();
+  assert.equal(h.state.route, "/result");
+  assert.equal(h.requests.length, 25); // One timed-out request, then 24 acknowledged answers.
+});
+
 test("selection stays and tracks local answer; Next advances before a slow API resolves; rapid questions drain serially", async () => {
   const pending = [], rows = new Map();
   const h = setup({ fetch: (url, init) => new Promise(resolve => {

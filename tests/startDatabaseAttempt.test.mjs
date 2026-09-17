@@ -6,6 +6,32 @@ import ts from "typescript";
 import { createHarness } from "./helpers/analyticsHarness.mjs";
 
 const token = "A".repeat(43); // Fake canonical token, never a real credential.
+
+test("start timeout signal ends loading, creates no success state, and permits manual retry", async t => {
+  const controller = new AbortController();
+  let fail = true;
+  t.mock.method(AbortSignal, "timeout", ms => { assert.equal(ms, 15_000); return fail ? controller.signal : new AbortController().signal; });
+  const id = randomUUID();
+  const h = setup({ fetch: async (_, init) => {
+    if (!fail) return Response.json({ attempt_id: id, write_token: token }, { status: 201 });
+    return new Promise((_, reject) => init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true }));
+  } });
+  const ui = runner(h);
+  const pending = ui.startNew();
+  assert.equal(ui.state.starting, true);
+  controller.abort(new DOMException("timed out", "TimeoutError"));
+  await pending;
+  assert.equal(ui.state.starting, false);
+  assert.equal(ui.state.progress, null);
+  assert.ok(ui.state.error);
+  assert.equal(h.start.hasPendingDatabaseStart(), false);
+  await h.analytics.initializeAnalytics();
+  assert.equal(h.events.length, 0);
+  fail = false;
+  await ui.startNew();
+  assert.equal(ui.state.progress.attemptId, id);
+  assert.equal(h.events.filter(e => e.name === "test_start").length, 1);
+});
 function setup(options = {}) {
   const requests = [];
   const id = randomUUID();

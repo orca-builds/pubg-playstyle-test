@@ -6,6 +6,37 @@ import ts from "typescript";
 import { createHarness } from "./helpers/analyticsHarness.mjs";
 
 const token = "A".repeat(43);
+
+test("complete timeout releases UI and preserves answers/credential for idempotent retry", async t => {
+  const controller = new AbortController();
+  let fail = true;
+  t.mock.method(AbortSignal, "timeout", ms => { assert.equal(ms, 15_000); return fail ? controller.signal : new AbortController().signal; });
+  const h = setup({ fetch: async (_, init) => {
+    if (fail) return new Promise((_, reject) => init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true }));
+    const body = JSON.parse(init.body);
+    return Response.json({ completed: true, already_completed: true, duration_seconds: 60,
+      answer_change_count: body.answer_change_count, back_count: body.back_count,
+      result: Object.fromEntries(h.load("src/lib/completionResult.ts").RESULT_FIELDS.map(field => [field, body[field]])) });
+  } });
+  const credentialKey = h.load("src/lib/attemptCredentials.ts").CREDENTIAL_STORAGE_KEY;
+  const credential = h.window.localStorage.getItem(credentialKey);
+  const answers = h.window.localStorage.getItem(h.lib.TEST_STORAGE_KEY);
+  const pending = h.handler()();
+  await Promise.resolve(); await Promise.resolve();
+  controller.abort(new DOMException("timed out", "TimeoutError"));
+  await pending;
+  assert.equal(h.state.navigating, false);
+  assert.equal(h.state.route, "");
+  assert.ok(h.state.error);
+  assert.equal(h.window.localStorage.getItem(credentialKey), credential);
+  assert.equal(h.window.localStorage.getItem(h.lib.TEST_STORAGE_KEY), answers);
+  await h.load("src/lib/analytics.ts").initializeAnalytics();
+  assert.equal(h.events.filter(e => e.name === "test_complete").length, 0);
+  fail = false;
+  await h.handler()();
+  assert.equal(h.state.route, "/result");
+  assert.equal(h.events.filter(e => e.name === "test_complete").length, 1);
+});
 const source = ts.createSourceFile("TestRunner.tsx", readFileSync(new URL("../src/components/TestRunner.tsx", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 let handleNext;
 function visit(node) {

@@ -5,6 +5,30 @@ import { createHarness } from "./helpers/analyticsHarness.mjs";
 const mainType = "combat-frontline-pressure-risk";
 const query = `main_type=${mainType}&tag=mainBodyFlank.mainBody&tag=hotdropTail.hotdrop`;
 
+test("PNG request has a finite timeout and can be retried after abort", async t => {
+  const controller = new AbortController();
+  let fail = true;
+  t.mock.method(AbortSignal, "timeout", ms => { assert.equal(ms, 30_000); return fail ? controller.signal : new AbortController().signal; });
+  const h = createHarness({ fetch: async (_, init) => {
+    if (fail) return new Promise((_, reject) => {
+      if (init.signal.aborted) reject(init.signal.reason);
+      else init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+    });
+    assert.equal(init.signal.aborted, false);
+    const bytes = Buffer.alloc(24);
+    bytes.writeUInt32BE(0x89504e47, 0); bytes.writeUInt32BE(0x0d0a1a0a, 4);
+    bytes.writeUInt32BE(1080, 16); bytes.writeUInt32BE(1350, 20);
+    return new Response(bytes, { headers: { "content-type": "image/png" } });
+  } });
+  const mainResult = h.load("src/data/resultTypes.ts").resultTypes[mainType];
+  const generate = h.load("src/lib/createResultImage.ts").createResultImage;
+  const pending = generate({ mainResult, displaySubTags: ["본대형", "대꼴형"] });
+  controller.abort(new DOMException("timed out", "TimeoutError"));
+  await assert.rejects(pending, { name: "TimeoutError" });
+  fail = false;
+  assert.equal((await generate({ mainResult, displaySubTags: ["본대형", "대꼴형"] })).type, "image/png");
+});
+
 test("attachment mode reuses identical PNG and supplies safe UTF-8 filename without extra URL data", async () => {
   const h = createHarness();
   const preview = h.load("src/app/api/result-image/route.ts").GET;

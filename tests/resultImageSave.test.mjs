@@ -209,6 +209,27 @@ test("iOS direct server handoff runs in first tap and silent failure retains man
   assert.equal(revoke.mock.callCount(), 1);
 });
 
+test("manual preview failure after iOS handoff reports fallback error and permits a fresh retry", async t => {
+  t.mock.method(URL, "createObjectURL", () => "blob:preview");
+  t.mock.method(URL, "revokeObjectURL", () => {});
+  const h = setup({ userAgent: "iPhone", directDownload() {} });
+  await h.load("src/lib/analytics.ts").initializeAnalytics();
+  await h.render().props.children[0].props.onClick();
+  h.render().props.children[3].props.onClick(); h.render();
+  h.image.dispatchEvent(new Event("error"));
+  const tree = h.render();
+  assert.equal(tree.props.children[2], null);
+  assert.equal(tree.props.children[1].props.children, "이미지 저장에 실패했어요. 다시 시도해주세요.");
+  assert.equal(tree.props.children[0].props.disabled, false);
+  assert.deepEqual(h.events.filter(e => e.name !== "result_image_save_click").map(e => [e.name, e.properties.save_method]), [
+    ["result_image_save_success", "download"], ["result_image_save_error", "preview_fallback"],
+  ]);
+  await tree.props.children[0].props.onClick();
+  assert.equal(h.generations, 2);
+  assert.equal(h.render().props.children[1], false);
+  h.unmount();
+});
+
 test("direct server anchor uses attachment route, safe filename and only public query values", () => {
   let clicks = 0, removed = 0;
   const link = { click() { clicks++; }, remove() { removed++; } };

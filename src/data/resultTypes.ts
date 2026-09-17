@@ -53,7 +53,7 @@ export const resultTypes = {
   "combat-frontline-design-safe": {
     id: "combat-frontline-design-safe",
     name: "계산된 전투대장",
-    summary: "싸우기 전에 유리한 구조를 만들고 직접 전투를 여는 플레이어",
+    summary: "싸우기 전에 유리한 각과 구도를 만들고 직접 전투를 여는 플레이어",
     imageSrc: "/images/results/04_combat-frontline-design-safe.png",
     imageAlt: "계산된 전투대장 캐릭터 이미지",
     description:
@@ -68,10 +68,10 @@ export const resultTypes = {
   },
   "combat-support-pressure-risk": {
     id: "combat-support-pressure-risk",
-    name: "돌격 트레이더",
+    name: "과감한 트레이더",
     summary: "팀원의 진입에 빠르게 붙어 화력과 트레이드로 싸움을 이어가는 플레이어",
     imageSrc: "/images/results/05_combat-support-pressure-risk.png",
-    imageAlt: "돌격 트레이더 캐릭터 이미지",
+    imageAlt: "과감한 트레이더 캐릭터 이미지",
     description:
       "팀원이 교전을 열면 빠르게 따라붙어 화력을 보태는 데 익숙합니다.\n" +
       "직접 첫 진입을 고집하기보다 팀원과 함께 싸움의 템포를 높이고 과감하게 트레이드를 보는 스타일입니다.",
@@ -132,10 +132,10 @@ export const resultTypes = {
   },
   "position-frontline-pressure-risk": {
     id: "position-frontline-pressure-risk",
-    name: "돌파형 자리개척자",
+    name: "전선 개척자",
     summary: "좋은 자리를 위해 위험도 감수하며 직접 공간을 여는 플레이어",
     imageSrc: "/images/results/09_position-frontline-pressure-risk.png",
-    imageAlt: "돌파형 자리개척자 캐릭터 이미지",
+    imageAlt: "전선 개척자 캐릭터 이미지",
     description:
       "좋은 위치가 필요하다면 싸움을 감수해서라도 직접 길을 뚫는 편입니다.\n" +
       "팀의 다음 공간을 만들기 위해 앞에서 압박하고 위험한 자리 경쟁에도 적극적으로 참여하는 스타일입니다.",
@@ -180,10 +180,10 @@ export const resultTypes = {
   },
   "position-frontline-design-safe": {
     id: "position-frontline-design-safe",
-    name: "스마트 리더",
+    name: "계산형 리더",
     summary: "다음 위치와 이동을 계산하고 직접 앞에서 길을 확인하는 플레이어",
     imageSrc: "/images/results/12_position-frontline-design-safe.png",
-    imageAlt: "스마트 리더 캐릭터 이미지",
+    imageAlt: "계산형 리더 캐릭터 이미지",
     description:
       "다음 위치와 이동 흐름을 계산해 팀이 어디로 가야 할지 먼저 판단하는 편입니다.\n" +
       "안정적인 계획을 세우면서도 뒤에서 지켜보기보다 직접 앞에서 길을 확인하고 팀을 이끄는 스타일입니다.",
