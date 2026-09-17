@@ -122,23 +122,30 @@ test("16 export cards use real name/image/summary and up to two actual tags, wit
   assert.equal(single.split("올라운더").length - 1, 1);
 });
 
-function setup({ userAgent = "Desktop", generate, download } = {}) {
+function setup({ userAgent = "Desktop", generate, download, viewError = false } = {}) {
   const states = [], refs = [], downloads = [], effects = [];
   let key;
-  const unmount = () => { effects.splice(0).forEach(cleanup => cleanup?.()); };
-  let stateIndex = 0, refIndex = 0, generations = 0;
+  const unmount = () => { effects.splice(0).forEach(effect => effect.cleanup?.()); };
+  let stateIndex = 0, refIndex = 0, effectIndex = 0, generations = 0;
+  const image = fakeImage(false, 1080, 1350);
+  const view = { open: false, showModal() { if (viewError) throw new Error("view failed"); this.open = true; }, close() { this.open = false; } };
   const png = new File(["png"], "result.png", { type: "image/png" });
   const h = createHarness({ userAgent, navigator: { share() { assert.fail("Unexpected image share"); }, canShare() { assert.fail("Unexpected canShare"); } }, mocks: {
     react: {
       useState(initial) { const i = stateIndex++; if (!(i in states)) states[i] = initial; return [states[i], value => { states[i] = value; }]; },
       useRef(initial) { const i = refIndex++; return refs[i] ??= { current: initial }; },
-      useEffect(effect) { if (!effects.length) effects.push(effect()); },
+      useEffect(effect, deps) {
+        const i = effectIndex++;
+        if (!effects[i] || deps.some((value, index) => value !== effects[i].deps[index])) {
+          effects[i]?.cleanup?.();
+          effects[i] = { deps, pending: effect };
+        }
+      },
     },
     "@/lib/createResultImage": { async createResultImage() { generations++; return generate ? generate(png) : png; } },
     "@/lib/resultImageFile": {
       ...createHarness({ userAgent }).load("src/lib/resultImageFile.ts"),
       downloadResultImage: file => { if (download) download(); downloads.push(file); },
-      downloadPreparedResultImage: (url, filename) => { if (download) download(); downloads.push({ url, filename }); },
     },
   } });
   const props = { result: result(h), attemptId: "image-attempt" };
@@ -148,61 +155,90 @@ function setup({ userAgent = "Desktop", generate, download } = {}) {
     if (child.key !== key) {
       unmount(); states.length = 0; refs.length = 0; key = child.key;
     }
-    stateIndex = 0; refIndex = 0;
-    return child.type(child.props);
+    stateIndex = 0; refIndex = 0; effectIndex = 0;
+    const tree = child.type(child.props);
+    const modal = tree.props.children[2];
+    if (modal) {
+      modal.props.ref.current = view;
+      modal.props.children[1].props.ref.current = image;
+    }
+    for (const effect of effects) {
+      if (effect.pending) { effect.cleanup = effect.pending(); delete effect.pending; }
+    }
+    return tree;
   };
-  return { ...h, props, render, unmount, downloads, get generations() { return generations; } };
+  return { ...h, props, render, unmount, downloads, image, view, get generations() { return generations; } };
 }
 
-test("iOS prepares first, then downloads synchronously on the second tap with no duplicate analytics", async t => {
-  t.mock.method(URL, "createObjectURL", () => "blob:prepared");
-  let resolve;
-  const h = setup({ userAgent: "iPhone", generate: png => new Promise(done => { resolve = () => done(png); }) });
+test("iOS one tap opens original PNG modal; success means image availability, not Photos save", async t => {
+  t.mock.method(URL, "createObjectURL", () => "blob:preview");
+  const revoke = t.mock.method(URL, "revokeObjectURL", () => {});
+  const h = setup({ userAgent: "iPhone" });
   await h.load("src/lib/analytics.ts").initializeAnalytics();
-  const first = h.render().props.children[0].props.onClick();
-  await Promise.resolve(); await Promise.resolve();
+  const pending = h.render().props.children[0].props.onClick();
   assert.equal(h.render().props.children[0].props.children, "이미지 만드는 중...");
-  assert.equal(h.render().props.children[0].props.disabled, true);
-  resolve(); await first;
-  const ready = h.render();
-  assert.equal(ready.props.children[0].props.children, "이미지 다운로드");
-  assert.equal(ready.props.children[0].props.disabled, false);
-  assert.equal(ready.props.children[2].props.children, "이미지가 준비됐어요. 한 번 더 눌러 저장하세요.");
+  await pending;
+  const tree = h.render(), modal = tree.props.children[2];
+  assert.equal(tree.props.children[0].props.children, "이미지 저장");
+  assert.equal(modal.type, "dialog");
+  assert.equal(h.view.open, true);
+  assert.equal(modal.props.children[0].props.children[0].props.children, "이미지를 길게 눌러 저장하세요.");
+  const img = modal.props.children[1];
+  assert.equal(img.type, "img");
+  assert.equal(img.props.src, "blob:preview");
+  assert.equal(img.props.width, 1080);
+  assert.equal(img.props.height, 1350);
+  assert.equal(img.props.style.WebkitTouchCallout, "default");
   assert.equal(h.downloads.length, 0);
   assert.deepEqual(h.events.map(e => e.name), ["result_image_save_click"]);
-  const second = ready.props.children[0].props.onClick();
-  assert.equal(h.downloads.length, 1); // Before awaiting: still in the click call stack.
-  await ready.props.children[0].props.onClick();
-  await second;
-  assert.equal(h.downloads.length, 1);
+  h.image.load(); h.image.load();
+  await tree.props.children[0].props.onClick();
   assert.equal(h.generations, 1);
-  assert.equal(h.downloads[0].url, "blob:prepared");
-  assert.equal(h.downloads[0].filename, `pubg-playstyle-${h.props.result.mainResult.name}.png`);
-  assert.equal(h.render().props.children[0].props.children, "이미지 저장");
-  assert.equal(h.render().props.children[2], null);
   assert.deepEqual(h.events.map(e => e.name), ["result_image_save_click", "result_image_save_success"]);
+  modal.props.children[0].props.children[1].props.onClick();
+  assert.equal(h.render().props.children[2], null);
+  assert.equal(h.view.open, false);
+  assert.equal(revoke.mock.callCount(), 1);
+  h.unmount();
+  assert.equal(revoke.mock.callCount(), 1);
 });
 
-test("iOS generation and download failures clear readiness and allow retry", async t => {
-  t.mock.method(URL, "createObjectURL", () => "blob:prepared");
-  for (const stage of ["generate", "download", "url"]) {
+test("iOS generation/preload errors and URL failure never open a view and allow retry", async t => {
+  t.mock.method(URL, "revokeObjectURL", () => {});
+  for (const stage of ["generation", "preload", "timeout", "url"]) {
     let fail = true;
-    t.mock.method(URL, "createObjectURL", () => { if (fail && stage === "url") throw new Error("url failed"); return "blob:prepared"; });
-    const h = setup({ userAgent: "iPhone",
-      generate: png => { if (fail && stage === "generate") throw new Error("load/timeout"); return png; },
-      download: () => { if (fail && stage === "download") throw new Error("download failed"); },
-    });
+    t.mock.method(URL, "createObjectURL", () => { if (fail && stage === "url") throw new Error("url failed"); return "blob:preview"; });
+    const h = setup({ userAgent: "iPhone", generate: png => { if (fail && stage !== "url") throw new Error(stage); return png; } });
     await h.load("src/lib/analytics.ts").initializeAnalytics();
     await h.render().props.children[0].props.onClick();
-    if (stage === "download") await h.render().props.children[0].props.onClick();
-    assert.equal(h.render().props.children[0].props.children, "이미지 저장");
-    assert.equal(h.render().props.children[1].props.children, "이미지 저장에 실패했어요. 다시 시도해주세요.");
-    assert.equal(h.render().props.children[2], null);
-    assert.deepEqual(h.events.map(e => e.name), ["result_image_save_click", "result_image_save_error"]);
+    const tree = h.render();
+    assert.equal(tree.props.children[1].props.children, "이미지 저장에 실패했어요. 다시 시도해주세요.");
+    assert.equal(tree.props.children[2], null);
+    assert.equal(h.view.open, false);
     fail = false;
-    await h.render().props.children[0].props.onClick();
-    await h.render().props.children[0].props.onClick();
+    await tree.props.children[0].props.onClick(); h.render(); h.image.load();
     assert.deepEqual(h.events.map(e => e.name), ["result_image_save_click", "result_image_save_error", "result_image_save_click", "result_image_save_success"]);
+    h.unmount();
+  }
+});
+
+test("iOS modal open/load/timeout failures report error, release URL and never report success", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  t.mock.method(URL, "createObjectURL", () => "blob:preview");
+  const revoke = t.mock.method(URL, "revokeObjectURL", () => {});
+  for (const failure of ["open", "load", "timeout"]) {
+    const before = revoke.mock.callCount();
+    const h = setup({ userAgent: "iPhone", viewError: failure === "open" });
+    await h.load("src/lib/analytics.ts").initializeAnalytics();
+    await h.render().props.children[0].props.onClick(); h.render();
+    if (failure === "load") h.image.dispatchEvent(new Event("error"));
+    if (failure === "timeout") t.mock.timers.tick(10_000);
+    const tree = h.render();
+    assert.equal(tree.props.children[2], null);
+    assert.equal(tree.props.children[1].props.role, "alert");
+    assert.deepEqual(h.events.map(e => e.name), ["result_image_save_click", "result_image_save_error"]);
+    assert.equal(revoke.mock.callCount(), before + 1);
+    h.unmount();
   }
 });
 
