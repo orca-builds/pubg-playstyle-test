@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
-import { createHarness } from "./helpers/analyticsHarness.mjs";
+import { createHarness, memoryStorage } from "./helpers/analyticsHarness.mjs";
 
 const context = { attemptId: "private-attempt", testVersion: "v2", mainType: "combat-frontline-pressure-risk", typeName: "화끈한 돌격대장" };
 const href = "https://example.invalid/result?attempt_id=private-attempt&write_token=private-token&anonymous_id=private-visitor&session_id=private-session#raw-score";
@@ -10,6 +10,76 @@ function setup(options = {}) {
   const h = createHarness(options);
   return { ...h, ...h.load("src/lib/shareResult.ts"), init: h.load("src/lib/analytics.ts").initializeAnalytics };
 }
+
+test("share campaigns use only the initial campaign and preserve route, UTM, and URL privacy", () => {
+  const h = setup();
+  for (const [initial, expected] of [
+    ["prelaunch", "prelaunch_referral"], ["prelaunch_referral", "prelaunch_referral"],
+    ["launch", "launch"], [undefined, "launch"], ["", "launch"], ["direct", "launch"], ["other", "launch"],
+  ]) {
+    assert.equal(h.getShareCampaign(initial), expected);
+    for (const mainType of Object.keys(h.load("src/data/resultTypes.ts").resultTypes)) {
+      assert.deepEqual(h.createSharePayload(href, mainType, initial), {
+        url: `https://example.invalid/share/${mainType}?utm_source=share&utm_medium=user_share&utm_campaign=${expected}`,
+      });
+    }
+  }
+});
+
+test("sharing uses preserved first attribution after 24 hours, root visits, and later launch UTM", async t => {
+  t.mock.timers.enable({ apis: ["Date"], now: 1_800_000_000_000 });
+  const localStorage = memoryStorage(), sessionStorage = memoryStorage();
+  const first = setup({ localStorage, sessionStorage,
+    href: "https://example.invalid/?utm_source=friend&utm_medium=smoke_test&utm_campaign=prelaunch" });
+  const initial = first.load("src/lib/visitorContext.ts").getVisitorContext();
+  t.mock.timers.tick(48 * 60 * 60 * 1000);
+  for (const entry of ["https://example.invalid/", "https://example.invalid/?utm_source=discord&utm_medium=community&utm_campaign=launch"]) {
+    const h = setup({ localStorage, sessionStorage, href: entry });
+    assert.deepEqual(h.load("src/lib/visitorContext.ts").getVisitorContext(), initial);
+    let shared, copied;
+    await h.shareResult(context, { async share(data) { shared = data.url; } }, href);
+    await h.shareResult(context, { clipboard: { async writeText(url) { copied = url; } } }, href);
+    assert.equal(new URL(shared).searchParams.get("utm_campaign"), "prelaunch_referral");
+    assert.equal(copied, shared);
+    await h.init();
+    assert.deepEqual(h.events.map(e => e.name), ["share_click", "share_success", "share_click", "copy_link"]);
+    for (const { properties } of h.events) {
+      assert.equal(properties.initial_source, "friend");
+      assert.equal(properties.initial_medium, "smoke_test");
+      assert.equal(properties.initial_campaign, "prelaunch");
+    }
+  }
+});
+
+test("prelaunch referral chain stays referral for new visitors", async () => {
+  let entry = "https://example.invalid/?utm_source=friend&utm_medium=smoke_test&utm_campaign=prelaunch";
+  for (let generation = 0; generation < 3; generation++) {
+    const h = setup({ href: entry });
+    const initial = h.load("src/lib/visitorContext.ts").getVisitorContext();
+    assert.equal(initial.initial_campaign, generation === 0 ? "prelaunch" : "prelaunch_referral");
+    await h.shareResult(context, { async share(data) { entry = data.url; } }, href);
+    assert.equal(entry, `https://example.invalid/share/${context.mainType}?utm_source=share&utm_medium=user_share&utm_campaign=prelaunch_referral`);
+  }
+});
+
+test("launch and direct visitors share launch without rewriting initial attribution, even without analytics", async () => {
+  for (const campaign of ["launch", "", "direct", "other"]) {
+    const h = setup({ env: {}, href: campaign
+      ? `https://example.invalid/?utm_source=discord&utm_medium=community&utm_campaign=${campaign}`
+      : "https://example.invalid/" });
+    const getContext = h.load("src/lib/visitorContext.ts").getVisitorContext;
+    const initial = getContext();
+    let url;
+    await h.shareResult(context, { async share(data) { url = data.url; } }, href);
+    assert.equal(new URL(url).searchParams.get("utm_campaign"), "launch");
+    assert.deepEqual(getContext(), initial);
+    assert.equal(initial.initial_campaign, campaign);
+    if (!campaign) {
+      assert.equal(initial.initial_source, "direct");
+      assert.equal(initial.initial_medium, "none");
+    }
+  }
+});
 
 test("Web Share receives only the public share URL and records click then success", async () => {
   const h = setup();
