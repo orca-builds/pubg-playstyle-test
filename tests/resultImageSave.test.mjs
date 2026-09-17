@@ -334,15 +334,38 @@ test("generation failure releases lock and retries without affecting the result"
   assert.deepEqual(h.events.map(e => e.name), ["result_image_save_click", "result_image_save_error", "result_image_save_click", "result_image_save_success"]);
 });
 
-test("PNG generation waits for image decode, exports 1080x1350 and cleans up on success/failure", async () => {
-  for (const failure of ["none", "decode", "load", "timeout", "overflow", "blob"]) {
+test("PNG generation inlines both images before decode and paint, exports 1080x1350 and cleans up", async t => {
+  const globals = ["FileReader", "requestAnimationFrame", "cancelAnimationFrame"];
+  const originals = globals.map(key => Object.getOwnPropertyDescriptor(globalThis, key));
+  t.after(() => globals.forEach((key, i) => {
+    if (originals[i]) Object.defineProperty(globalThis, key, originals[i]); else delete globalThis[key];
+  }));
+  globalThis.FileReader = class {
+    readAsDataURL() { this.result = "data:image/png;base64,cG5n"; this.onload(); }
+  };
+  globalThis.cancelAnimationFrame = clearTimeout;
+  for (const failure of ["none", "fetch", "decode", "load", "timeout", "overflow", "blob"]) {
     let decoded = 0, removed = false, unmounted = false, renders = 0, captures = 0;
+    let frames = 0;
+    globalThis.requestAnimationFrame = callback => setTimeout(() => { frames++; callback(); }, 0);
+    const images = ["/images/results/01-test.png", "/icon.png"].map((src, index) => Object.assign(
+      fakeImage(failure !== "timeout", failure === "load" && index === 1 ? 0 : 280), {
+        src, removeAttribute(name) { assert.equal(name, "srcset"); },
+        async decode() {
+          assert.match(this.src, /^data:image\/png;base64,/);
+          if (failure === "decode" && index === 1) throw new Error("brand image load");
+          decoded++;
+        },
+      }));
+    const fetched = [];
     const wait = createHarness().load("src/lib/waitForResultImages.ts").waitForResultImages;
     const card = { clientHeight: 675, scrollHeight: failure === "overflow" ? 676 : 675,
       clientWidth: 540, scrollWidth: 540,
-      querySelectorAll: () => [0, 1].map(index => Object.assign(fakeImage(failure !== "timeout", failure === "load" && index === 1 ? 0 : 280), { async decode() { if (failure === "decode" && index === 1) throw new Error("brand image load"); decoded++; } })) };
+      querySelectorAll: () => images };
     const host = { style: {}, setAttribute() {}, firstElementChild: card, remove() { removed = true; } };
-    const h = createHarness({ document: { createElement: () => host, body: { appendChild() {} }, fonts: { ready: Promise.resolve() } }, mocks: {
+    const h = createHarness({
+      fetch: async url => { fetched.push(url); return { ok: failure !== "fetch", blob: async () => new Blob(["png"], { type: "image/png" }) }; },
+      document: { createElement: () => host, body: { appendChild() {} }, fonts: { ready: Promise.resolve() } }, mocks: {
       "@/lib/waitForResultImages": { waitForResultImages: card => wait(card, 10) },
       "react-dom/client": { createRoot: () => ({ render() { renders++; }, unmount() { unmounted = true; } }) },
       "react-dom": { flushSync: fn => fn() },
@@ -350,6 +373,8 @@ test("PNG generation waits for image decode, exports 1080x1350 and cleans up on 
         assert.equal(node, card);
         captures++;
         assert.equal(decoded, 2);
+        assert.equal(frames, 2);
+        assert.ok(images.every(image => image.src.startsWith("data:image/png;base64,")));
         assert.equal(options.width * options.pixelRatio, 1080);
         assert.equal(options.height * options.pixelRatio, 1350);
         return failure === "blob" ? null : new Blob(["png"], { type: "image/png" });
@@ -362,6 +387,7 @@ test("PNG generation waits for image decode, exports 1080x1350 and cleans up on 
       assert.ok(file instanceof Blob);
     } else await assert.rejects(generate(result(h)));
     assert.equal(captures, ["none", "blob"].includes(failure) ? 1 : 0);
+    assert.deepEqual(fetched, ["/images/results/01-test.png", "/icon.png"]);
     assert.equal(renders, 1);
     assert.equal(removed, true);
     assert.equal(unmounted, true);
