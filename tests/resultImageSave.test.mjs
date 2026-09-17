@@ -3,6 +3,92 @@ import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createHarness } from "./helpers/analyticsHarness.mjs";
 
+function fakeImage(complete = false, width = 280, height = 280) {
+  const image = new EventTarget();
+  Object.assign(image, { complete, naturalWidth: complete ? width : 0, naturalHeight: complete ? height : 0 });
+  image.load = () => {
+    Object.assign(image, { complete: true, naturalWidth: width, naturalHeight: height });
+    image.dispatchEvent(new Event("load"));
+  };
+  return image;
+}
+
+for (const userAgent of ["iPhone", "Android", "Desktop"]) {
+  test(`${userAgent} uses download without accessing Web Share`, async () => {
+    const h = setup({ userAgent });
+    await h.load("src/lib/analytics.ts").initializeAnalytics();
+    await h.render().props.children[0].props.onClick();
+    assert.equal(h.downloads.length, 1);
+    assert.equal(h.render().props.children[0].props.children, "이미지 저장");
+    assert.equal(h.render().props.children[1], false);
+    assert.deepEqual(h.events.map(e => e.name), ["result_image_save_click", "result_image_save_success"]);
+  });
+}
+
+test("download errors including AbortError show failure and allow retry", async () => {
+  let fail = true;
+  const h = setup({ download() { if (fail) throw new DOMException("failed", "AbortError"); } });
+  await h.load("src/lib/analytics.ts").initializeAnalytics();
+  await h.render().props.children[0].props.onClick();
+  assert.equal(h.render().props.children[0].props.disabled, false);
+  assert.equal(h.render().props.children[1].props.role, "alert");
+  fail = false;
+  await h.render().props.children[0].props.onClick();
+  assert.equal(h.render().props.children[1], false);
+  assert.deepEqual(h.events.map(e => e.name), ["result_image_save_click", "result_image_save_error", "result_image_save_click", "result_image_save_success"]);
+});
+
+test("all character and brand images must load; cached, broken, and stalled images are handled", async () => {
+  const { waitForResultImages: wait } = createHarness().load("src/lib/waitForResultImages.ts");
+  await wait({ querySelectorAll: () => [fakeImage(true), fakeImage(true, 18, 18)] });
+  const character = fakeImage(), brand = fakeImage(false, 18, 18);
+  let ready = false;
+  const pending = wait({ querySelectorAll: () => [character, brand] }).then(() => { ready = true; });
+  character.load();
+  await Promise.resolve();
+  assert.equal(ready, false);
+  brand.load();
+  await pending;
+  assert.equal(ready, true);
+  for (const broken of [fakeImage(true, 0, 18), fakeImage(true, 18, 0)]) {
+    await assert.rejects(wait({ querySelectorAll: () => [broken] }), /IMAGE_LOAD_FAILED/);
+  }
+  const broken = fakeImage();
+  const failure = wait({ querySelectorAll: () => [broken] });
+  broken.dispatchEvent(new Event("error"));
+  await assert.rejects(failure, /IMAGE_LOAD_FAILED/);
+  await assert.rejects(wait({ querySelectorAll: () => [fakeImage()] }, 5), /IMAGE_LOAD_TIMEOUT/);
+  const stalledDecode = fakeImage(true);
+  stalledDecode.decode = () => new Promise(() => {});
+  await assert.rejects(wait({ querySelectorAll: () => [stalledDecode] }, 5), /IMAGE_LOAD_TIMEOUT/);
+  await assert.rejects(wait({ querySelectorAll: () => [] }), /IMAGE_MISSING/);
+});
+
+test("download creates an anchor, cleans up, revokes later, and sanitizes filenames", t => {
+  const blob = new Blob(["png"], { type: "image/png" });
+  let clicked = 0, removed = 0, appended = 0, revoked = 0;
+  const link = { click() { clicked++; }, remove() { removed++; } };
+  t.mock.method(URL, "createObjectURL", input => { assert.equal(input, blob); return "blob:test"; });
+  t.mock.method(URL, "revokeObjectURL", url => { assert.equal(url, "blob:test"); revoked++; });
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const h = createHarness({ document: { createElement: () => link, body: { appendChild() { appended++; } } } });
+  const { downloadResultImage, resultImageFilename } = h.load("src/lib/resultImageFile.ts");
+  const filename = resultImageFilename('유형:/\\?*<>|"');
+  assert.equal(filename, "pubg-playstyle-유형.png");
+  assert.equal(resultImageFilename("... "), "pubg-playstyle-result.png");
+  downloadResultImage(blob, filename);
+  assert.equal(link.href, "blob:test");
+  assert.equal(link.download, filename);
+  assert.deepEqual([clicked, removed, appended, revoked], [1, 1, 1, 0]);
+  t.mock.timers.tick(60_000);
+  assert.equal(revoked, 1);
+  link.click = () => { throw new Error("download failed"); };
+  assert.throws(() => downloadResultImage(blob, filename), /download failed/);
+  assert.equal(removed, 2);
+  t.mock.timers.tick(60_000);
+  assert.equal(revoked, 2);
+});
+
 function result(h) {
   const questions = h.load("src/data/questionOrder.ts").orderedQuestions;
   return h.load("src/lib/scoring.ts").calculateScore(questions.map(q => ({ questionId: q.id, choiceId: q.choices[0].id })));
@@ -36,17 +122,17 @@ test("16 export cards use real name/image/summary and up to two actual tags, wit
   assert.equal(single.split("올라운더").length - 1, 1);
 });
 
-function setup({ mobile = false, generate, share, active = true } = {}) {
+function setup({ userAgent = "Desktop", generate, download } = {}) {
   const states = [], refs = [], downloads = [];
   let stateIndex = 0, refIndex = 0, generations = 0;
   const png = new File(["png"], "result.png", { type: "image/png" });
-  const h = createHarness({ navigator: { share: share ?? (async () => {}), userActivation: { isActive: active } }, mocks: {
+  const h = createHarness({ userAgent, navigator: { share() { assert.fail("Unexpected image share"); }, canShare() { assert.fail("Unexpected canShare"); } }, mocks: {
     react: {
       useState(initial) { const i = stateIndex++; if (!(i in states)) states[i] = initial; return [states[i], value => { states[i] = value; }]; },
       useRef(initial) { const i = refIndex++; return refs[i] ??= { current: initial }; }, useEffect() {},
     },
     "@/lib/createResultImage": { async createResultImage() { generations++; return generate ? generate(png) : png; } },
-    "@/lib/resultImageFile": { canShareResultImage: () => mobile, downloadResultImage: file => downloads.push(file) },
+    "@/lib/resultImageFile": { resultImageFilename: name => `pubg-playstyle-${name}.png`, downloadResultImage: file => { if (download) download(); downloads.push(file); } },
   } });
   const props = { result: result(h), attemptId: "image-attempt" };
   const Component = h.load("src/components/ResultImageSave.tsx").default;
@@ -63,7 +149,7 @@ test("button is between share and restart; desktop save locks duplicates and onl
   assert.equal(actions[2].type, h.load("src/components/ResultImageSave.tsx").default);
   assert.equal(actions[3].props.children, "다시 하기");
   const button = h.render().props.children[0];
-  assert.equal(button.props.children, "결과 이미지 저장");
+  assert.equal(button.props.children, "이미지 저장");
   assert.equal(h.render().props.children[1], false);
   const pending = button.props.onClick();
   await button.props.onClick();
@@ -104,65 +190,22 @@ test("generation failure releases lock and retries without affecting the result"
   assert.deepEqual(h.events.map(e => e.name), ["result_image_save_click", "result_image_save_error", "result_image_save_click", "result_image_save_success"]);
 });
 
-test("mobile prepares a PNG then shares files in a fresh click; cancel remains retryable without success", async () => {
-  let cancel = true, shares = 0;
-  const h = setup({ mobile: true, active: false, share: async payload => {
-    shares++;
-    assert.deepEqual(Object.keys(payload), ["files"]);
-    assert.equal(payload.files[0].type, "image/png");
-    if (cancel) throw new DOMException("cancel", "AbortError");
-  } });
-  await h.load("src/lib/analytics.ts").initializeAnalytics();
-  await h.render().props.children[0].props.onClick();
-  assert.equal(shares, 0);
-  assert.equal(h.render().props.children[0].props.children, "이미지 저장/공유");
-  await h.render().props.children[0].props.onClick();
-  assert.ok(!h.events.some(e => e.name.endsWith("success") || e.name.endsWith("error")));
-  cancel = false;
-  const pending = h.render().props.children[0].props.onClick();
-  assert.equal(shares, 2); // navigator.share called synchronously in the click.
-  await pending;
-  assert.equal(h.generations, 1);
-  assert.equal(h.downloads.length, 0);
-  assert.equal(h.events.filter(e => e.name === "result_image_save_success").length, 1);
-});
-
-test("mobile shares immediately after generation when user activation is still valid", async () => {
-  let shares = 0;
-  const h = setup({ mobile: true, share: async payload => {
-    shares++;
-    assert.equal(payload.files[0].type, "image/png");
-  } });
-  await h.load("src/lib/analytics.ts").initializeAnalytics();
-  await h.render().props.children[0].props.onClick();
-  assert.equal(shares, 1);
-  assert.equal(h.downloads.length, 0);
-  assert.equal(h.render().props.children[0].props.children, "결과 이미지 저장");
-  assert.deepEqual(h.events.map(e => e.name), ["result_image_save_click", "result_image_save_success"]);
-});
-
-test("file sharing detection and filenames handle iPhone, iPad, unsupported browsers and desktop", () => {
-  for (const [userAgent, maxTouchPoints, support, expected] of [["iPhone", 1, true, true], ["Macintosh", 5, true, true], ["iPhone", 1, false, false], ["Desktop", 0, true, false]]) {
-    const h = createHarness({ userAgent, maxTouchPoints, navigator: { share() {}, canShare: () => support } });
-    const helper = h.load("src/lib/resultImageFile.ts");
-    assert.equal(helper.canShareResultImage(new File(["png"], "test.png")), expected);
-    assert.equal(helper.resultImageFilename('유형:/\\?*<>|"'), "pubg-playstyle-유형.png");
-  }
-});
-
 test("PNG generation waits for image decode, exports 1080x1350 and cleans up on success/failure", async () => {
-  for (const failure of ["none", "decode", "overflow", "blob"]) {
-    let decoded = false, removed = false, unmounted = false, renders = 0;
+  for (const failure of ["none", "decode", "load", "timeout", "overflow", "blob"]) {
+    let decoded = 0, removed = false, unmounted = false, renders = 0, captures = 0;
+    const wait = createHarness().load("src/lib/waitForResultImages.ts").waitForResultImages;
     const card = { clientHeight: 675, scrollHeight: failure === "overflow" ? 676 : 675,
       clientWidth: 540, scrollWidth: 540,
-      querySelectorAll: () => [0, 1].map(index => ({ async decode() { if (failure === "decode" && index === 1) throw new Error("brand image load"); decoded = true; } })) };
+      querySelectorAll: () => [0, 1].map(index => Object.assign(fakeImage(failure !== "timeout", failure === "load" && index === 1 ? 0 : 280), { async decode() { if (failure === "decode" && index === 1) throw new Error("brand image load"); decoded++; } })) };
     const host = { style: {}, setAttribute() {}, firstElementChild: card, remove() { removed = true; } };
     const h = createHarness({ document: { createElement: () => host, body: { appendChild() {} }, fonts: { ready: Promise.resolve() } }, mocks: {
+      "@/lib/waitForResultImages": { waitForResultImages: card => wait(card, 10) },
       "react-dom/client": { createRoot: () => ({ render() { renders++; }, unmount() { unmounted = true; } }) },
       "react-dom": { flushSync: fn => fn() },
       "html-to-image": { async toBlob(node, options) {
         assert.equal(node, card);
-        assert.equal(decoded, true);
+        captures++;
+        assert.equal(decoded, 2);
         assert.equal(options.width * options.pixelRatio, 1080);
         assert.equal(options.height * options.pixelRatio, 1350);
         return failure === "blob" ? null : new Blob(["png"], { type: "image/png" });
@@ -172,8 +215,9 @@ test("PNG generation waits for image decode, exports 1080x1350 and cleans up on 
     if (failure === "none") {
       const file = await generate(result(h));
       assert.equal(file.type, "image/png");
-      assert.match(file.name, /^pubg-playstyle-.+\.png$/);
+      assert.ok(file instanceof Blob);
     } else await assert.rejects(generate(result(h)));
+    assert.equal(captures, ["none", "blob"].includes(failure) ? 1 : 0);
     assert.equal(renders, 1);
     assert.equal(removed, true);
     assert.equal(unmounted, true);

@@ -3,23 +3,17 @@ export function resultImageFilename(name: string): string {
   return `pubg-playstyle-${safe || "result"}.png`;
 }
 
-export function canShareResultImage(file: File): boolean {
-  const mobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ||
-    (/Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
-  try { return mobile && typeof navigator.share === "function" && Boolean(navigator.canShare?.({ files: [file] })); }
-  catch { return false; }
-}
-
-export function downloadResultImage(file: File): void {
-  const url = URL.createObjectURL(file);
-  const link = document.createElement("a");
+export function downloadResultImage(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  let link: HTMLAnchorElement | undefined;
   try {
+    link = document.createElement("a");
     link.href = url;
-    link.download = file.name;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
   } finally {
-    link.remove();
+    link?.remove();
     // Allow Safari to consume the URL before releasing the PNG memory.
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
