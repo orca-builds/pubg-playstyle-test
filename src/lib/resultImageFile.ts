@@ -5,6 +5,17 @@ export function resultImageFilename(name: string): string {
 
 export function downloadResultImage(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
+  downloadPreparedResultImage(url, filename);
+}
+
+export function isIOSBrowser(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (/Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+}
+
+// Takes ownership of the URL, including when preparing the anchor fails.
+export function downloadPreparedResultImage(url: string, filename: string): void {
   let link: HTMLAnchorElement | undefined;
   try {
     link = document.createElement("a");
