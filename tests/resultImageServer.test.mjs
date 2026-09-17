@@ -20,8 +20,8 @@ test("all 16 server cards look up canonical text and embed local character and h
     assert.equal(children[1].props.children, mainResult.name);
     assert.deepEqual(children[2].props.children.map(tag => tag.props.children), ["본대형", "대꼴형"]);
     assert.match(children[3].props.src, /^data:image\/png;base64,/);
-    assert.equal(children[4].props.children, mainResult.summary);
-    assert.equal(children[5].props.children, mainResult.description);
+    assert.equal(children[4].props.children.replace(/\s+/g, " "), mainResult.summary);
+    assert.equal(children[5].props.children.map(word => word.props.children).join(" "), mainResult.description.replace(/\s+/g, " "));
     assert.match(children[6].props.children[0].props.src, /^data:image\/png;base64,/);
     assert.equal(children[6].props.children[1].props.children, "PUBG 플레이스타일 테스트");
   }

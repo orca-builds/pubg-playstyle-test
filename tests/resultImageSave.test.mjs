@@ -76,14 +76,14 @@ test("16 export cards use real name/image/summary and up to two actual tags, wit
     const card = Card({ result: { ...base, mainResult } });
     const html = renderToStaticMarkup(card);
     assert.equal(card.props.style.width / card.props.style.height, 4 / 5);
-    for (const text of [mainResult.name, mainResult.summary, mainResult.imageSrc, ...base.displaySubTags]) assert.ok(html.includes(text));
-    assert.ok(html.includes(mainResult.description));
+    for (const text of [mainResult.name, mainResult.imageSrc, ...base.displaySubTags]) assert.ok(html.includes(text));
+
     const children = card.props.children;
     assert.equal(children[1].props.children, mainResult.name);
     assert.deepEqual(children[2].props.children.map(tag => tag.props.children), base.displaySubTags.slice(0, 2));
     assert.equal(children[3].props.src, mainResult.imageSrc);
-    assert.equal(children[4].props.children, mainResult.summary);
-    assert.equal(children[5].props.children, mainResult.description);
+    assert.equal(children[4].props.children.replace(/\s+/g, " "), mainResult.summary);
+    assert.equal(children[5].props.children.map(word => word.props.children).join(" "), mainResult.description.replace(/\s+/g, " "));
     const brand = children[6];
     assert.equal(brand.props.style.display, "flex");
     assert.equal(brand.props.style.alignItems, "center");
