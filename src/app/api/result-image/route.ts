@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { cwd } from "node:process";
 import ResultImageCard from "@/components/ResultImageCard";
 import { parseResultImageRequest } from "@/lib/resultImageRequest";
+import { resultImageText } from "@/lib/server/resultImageText";
 
 export const runtime = "nodejs";
 
@@ -26,7 +27,8 @@ export async function GET(request: Request) {
       readFile(join(cwd(), "assets/result-image/NanumGothic-Regular.ttf")),
       readFile(join(cwd(), "assets/result-image/NanumGothic-Bold.ttf")),
     ]);
-    const image = new ImageResponse(ResultImageCard({ result, character, brand }), {
+    const textLines = resultImageText(result.mainResult, regular, bold);
+    const image = new ImageResponse(ResultImageCard({ result, character, brand, textLines }), {
       width: 1080, height: 1350,
       fonts: [
         { name: "NanumGothic", data: regular, weight: 400, style: "normal" },

@@ -1,3 +1,4 @@
+import { imageText } from "./helpers/resultImageText.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -73,7 +74,7 @@ test("16 export cards use real name/image/summary and up to two actual tags, wit
   const Card = h.load("src/components/ResultImageCard.tsx").default;
   const base = result(h);
   for (const mainResult of Object.values(h.load("src/data/resultTypes.ts").resultTypes)) {
-    const card = Card({ result: { ...base, mainResult } });
+    const card = Card({ result: { ...base, mainResult }, textLines: imageText(mainResult) });
     const html = renderToStaticMarkup(card);
     assert.equal(card.props.style.width / card.props.style.height, 4 / 5);
     for (const text of [mainResult.name, mainResult.imageSrc, ...base.displaySubTags]) assert.ok(html.includes(text));
@@ -83,7 +84,7 @@ test("16 export cards use real name/image/summary and up to two actual tags, wit
     assert.deepEqual(children[2].props.children.map(tag => tag.props.children), base.displaySubTags.slice(0, 2));
     assert.equal(children[3].props.src, mainResult.imageSrc);
     assert.equal(children[4].props.children.replace(/\s+/g, " "), mainResult.summary);
-    assert.equal(children[5].props.children.map(word => word.props.children).join(" "), mainResult.description.replace(/\s+/g, " "));
+    assert.equal(children[5].props.children.replace(/\s+/g, " "), mainResult.description.replace(/\s+/g, " "));
     const brand = children[6];
     assert.equal(brand.props.style.display, "flex");
     assert.equal(brand.props.style.alignItems, "center");
@@ -92,7 +93,7 @@ test("16 export cards use real name/image/summary and up to two actual tags, wit
     assert.equal(brand.props.children[1].props.children, "PUBG 플레이스타일 테스트");
     assert.doesNotMatch(html, /<button|나의 플레이 성향|결과 공유하기|다시 하기/);
   }
-  const single = renderToStaticMarkup(Card({ result: { ...base, displaySubTags: ["올라운더"] } }));
+  const single = renderToStaticMarkup(Card({ textLines: imageText(base.mainResult), result: { ...base, displaySubTags: ["올라운더"] } }));
   assert.equal(single.split("올라운더").length - 1, 1);
 });
 
