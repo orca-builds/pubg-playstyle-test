@@ -97,6 +97,7 @@ function ResultImageSaveButton({ result, attemptId, disabled = false }: Props) {
         return;
       }
       downloadResultImage(blob, filename);
+      // Success confirms server PNG + browser handoff, not a completed Files/Photos save.
       trackEvent("result_image_save_success", properties);
     } catch {
       if (!mounted.current) return;

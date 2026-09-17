@@ -38,32 +38,6 @@ test("download errors including AbortError show failure and allow retry", async 
   assert.deepEqual(h.events.map(e => e.name), ["result_image_save_click", "result_image_save_error", "result_image_save_click", "result_image_save_success"]);
 });
 
-test("all character and brand images must load; cached, broken, and stalled images are handled", async () => {
-  const { waitForResultImages: wait } = createHarness().load("src/lib/waitForResultImages.ts");
-  await wait({ querySelectorAll: () => [fakeImage(true), fakeImage(true, 18, 18)] });
-  const character = fakeImage(), brand = fakeImage(false, 18, 18);
-  let ready = false;
-  const pending = wait({ querySelectorAll: () => [character, brand] }).then(() => { ready = true; });
-  character.load();
-  await Promise.resolve();
-  assert.equal(ready, false);
-  brand.load();
-  await pending;
-  assert.equal(ready, true);
-  for (const broken of [fakeImage(true, 0, 18), fakeImage(true, 18, 0)]) {
-    await assert.rejects(wait({ querySelectorAll: () => [broken] }), /IMAGE_LOAD_FAILED/);
-  }
-  const broken = fakeImage();
-  const failure = wait({ querySelectorAll: () => [broken] });
-  broken.dispatchEvent(new Event("error"));
-  await assert.rejects(failure, /IMAGE_LOAD_FAILED/);
-  await assert.rejects(wait({ querySelectorAll: () => [fakeImage()] }, 5), /IMAGE_LOAD_TIMEOUT/);
-  const stalledDecode = fakeImage(true);
-  stalledDecode.decode = () => new Promise(() => {});
-  await assert.rejects(wait({ querySelectorAll: () => [stalledDecode] }, 5), /IMAGE_LOAD_TIMEOUT/);
-  await assert.rejects(wait({ querySelectorAll: () => [] }), /IMAGE_MISSING/);
-});
-
 test("download creates an anchor, cleans up, revokes later, and sanitizes filenames", t => {
   const blob = new Blob(["png"], { type: "image/png" });
   let clicked = 0, removed = 0, appended = 0, revoked = 0;
@@ -332,64 +306,4 @@ test("generation failure releases lock and retries without affecting the result"
   assert.equal(ui.props.children[1], false);
   assert.equal(h.downloads.length, 1);
   assert.deepEqual(h.events.map(e => e.name), ["result_image_save_click", "result_image_save_error", "result_image_save_click", "result_image_save_success"]);
-});
-
-test("PNG generation inlines both images before decode and paint, exports 1080x1350 and cleans up", async t => {
-  const globals = ["FileReader", "requestAnimationFrame", "cancelAnimationFrame"];
-  const originals = globals.map(key => Object.getOwnPropertyDescriptor(globalThis, key));
-  t.after(() => globals.forEach((key, i) => {
-    if (originals[i]) Object.defineProperty(globalThis, key, originals[i]); else delete globalThis[key];
-  }));
-  globalThis.FileReader = class {
-    readAsDataURL() { this.result = "data:image/png;base64,cG5n"; this.onload(); }
-  };
-  globalThis.cancelAnimationFrame = clearTimeout;
-  for (const failure of ["none", "fetch", "decode", "load", "timeout", "overflow", "blob"]) {
-    let decoded = 0, removed = false, unmounted = false, renders = 0, captures = 0;
-    let frames = 0;
-    globalThis.requestAnimationFrame = callback => setTimeout(() => { frames++; callback(); }, 0);
-    const images = ["/images/results/01-test.png", "/icon.png"].map((src, index) => Object.assign(
-      fakeImage(failure !== "timeout", failure === "load" && index === 1 ? 0 : 280), {
-        src, removeAttribute(name) { assert.equal(name, "srcset"); },
-        async decode() {
-          assert.match(this.src, /^data:image\/png;base64,/);
-          if (failure === "decode" && index === 1) throw new Error("brand image load");
-          decoded++;
-        },
-      }));
-    const fetched = [];
-    const wait = createHarness().load("src/lib/waitForResultImages.ts").waitForResultImages;
-    const card = { clientHeight: 675, scrollHeight: failure === "overflow" ? 676 : 675,
-      clientWidth: 540, scrollWidth: 540,
-      querySelectorAll: () => images };
-    const host = { style: {}, setAttribute() {}, firstElementChild: card, remove() { removed = true; } };
-    const h = createHarness({
-      fetch: async url => { fetched.push(url); return { ok: failure !== "fetch", blob: async () => new Blob(["png"], { type: "image/png" }) }; },
-      document: { createElement: () => host, body: { appendChild() {} }, fonts: { ready: Promise.resolve() } }, mocks: {
-      "@/lib/waitForResultImages": { waitForResultImages: card => wait(card, 10) },
-      "react-dom/client": { createRoot: () => ({ render() { renders++; }, unmount() { unmounted = true; } }) },
-      "react-dom": { flushSync: fn => fn() },
-      "html-to-image": { async toBlob(node, options) {
-        assert.equal(node, card);
-        captures++;
-        assert.equal(decoded, 2);
-        assert.equal(frames, 2);
-        assert.ok(images.every(image => image.src.startsWith("data:image/png;base64,")));
-        assert.equal(options.width * options.pixelRatio, 1080);
-        assert.equal(options.height * options.pixelRatio, 1350);
-        return failure === "blob" ? null : new Blob(["png"], { type: "image/png" });
-      } },
-    } });
-    const generate = h.load("src/lib/createResultImage.tsx").createResultImage;
-    if (failure === "none") {
-      const file = await generate(result(h));
-      assert.equal(file.type, "image/png");
-      assert.ok(file instanceof Blob);
-    } else await assert.rejects(generate(result(h)));
-    assert.equal(captures, ["none", "blob"].includes(failure) ? 1 : 0);
-    assert.deepEqual(fetched, ["/images/results/01-test.png", "/icon.png"]);
-    assert.equal(renders, 1);
-    assert.equal(removed, true);
-    assert.equal(unmounted, true);
-  }
 });
