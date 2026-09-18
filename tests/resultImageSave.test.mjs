@@ -97,7 +97,7 @@ test("16 export cards use real name/image/summary and up to two actual tags, wit
   assert.equal(single.split("올라운더").length - 1, 1);
 });
 
-function setup({ userAgent = "Desktop", generate, download, directDownload, viewError = false } = {}) {
+function setup({ userAgent = "Desktop", generate, download, directDownload, handoff, viewError = false } = {}) {
   const states = [], refs = [], downloads = [], effects = [];
   let key;
   const unmount = () => { effects.splice(0).forEach(effect => effect.cleanup?.()); };
@@ -105,6 +105,7 @@ function setup({ userAgent = "Desktop", generate, download, directDownload, view
   const image = fakeImage(false, 1080, 1350);
   const view = { open: false, showModal() { if (viewError) throw new Error("view failed"); this.open = true; }, close() { this.open = false; } };
   const png = new File(["png"], "result.png", { type: "image/png" });
+  const imageWindow = { closed: false, close() { this.closed = true; }, location: { replace(url) { if (handoff) handoff(url); imageWindow.url = url; } } };
   const h = createHarness({ userAgent, navigator: { share() { assert.fail("Unexpected image share"); }, canShare() { assert.fail("Unexpected canShare"); } }, mocks: {
     react: {
       useState(initial) { const i = stateIndex++; if (!(i in states)) states[i] = initial; return [states[i], value => { states[i] = value; }]; },
@@ -121,7 +122,11 @@ function setup({ userAgent = "Desktop", generate, download, directDownload, view
     "@/lib/resultImageFile": {
       ...createHarness({ userAgent }).load("src/lib/resultImageFile.ts"),
       downloadResultImage: file => { if (download) download(); downloads.push(file); },
-      downloadServerResultImage: directDownload ?? (() => { throw new Error("handoff blocked"); }),
+      openResultImageWindow() {
+        if (!directDownload) return null;
+        directDownload();
+        return imageWindow;
+      },
     },
   } });
   const props = { result: result(h), attemptId: "image-attempt" };
@@ -143,7 +148,7 @@ function setup({ userAgent = "Desktop", generate, download, directDownload, view
     }
     return tree;
   };
-  return { ...h, props, render, unmount, downloads, image, view, get generations() { return generations; } };
+  return { ...h, props, render, unmount, downloads, image, view, imageWindow, get generations() { return generations; } };
 }
 
 test("iOS handoff exception automatically opens PNG modal; success means availability, not Photos save", async t => {
@@ -180,7 +185,7 @@ test("iOS handoff exception automatically opens PNG modal; success means availab
   assert.equal(revoke.mock.callCount(), 1);
 });
 
-test("iOS direct server handoff runs in first tap and silent failure retains manual preview without double success", async t => {
+test("iOS reserves a window on first tap and hands off one validated PNG without double success", async t => {
   t.mock.method(URL, "createObjectURL", () => "blob:preview");
   const revoke = t.mock.method(URL, "revokeObjectURL", () => {});
   let attempts = 0, resolve;
@@ -195,12 +200,16 @@ test("iOS direct server handoff runs in first tap and silent failure retains man
   await Promise.resolve(); await Promise.resolve();
   assert.equal(attempts, 1);
   assert.deepEqual(h.events.map(e => e.name), ["result_image_save_click"]);
+  assert.equal(h.imageWindow.url, undefined);
   resolve(); await pending;
   const tree = h.render();
   assert.equal(tree.props.children[2], null);
   assert.equal(tree.props.children[3].props.children, "저장되지 않았나요? 이미지 보기");
   assert.equal(h.downloads.length, 0); // No iOS Blob download.
   assert.equal(h.events.at(-1).properties.save_method, "download");
+  assert.equal(h.imageWindow.url, "blob:preview");
+  assert.equal(tree.props.children[1], false);
+  assert.deepEqual(h.events.map(e => e.name), ["result_image_save_click", "result_image_save_success"]);
   tree.props.children[3].props.onClick(); h.render(); h.image.load();
   assert.equal(h.view.open, true);
   assert.equal(h.generations, 1);
@@ -209,7 +218,7 @@ test("iOS direct server handoff runs in first tap and silent failure retains man
   assert.equal(revoke.mock.callCount(), 1);
 });
 
-test("manual preview failure after iOS handoff reports fallback error and permits a fresh retry", async t => {
+test("manual preview failure cannot turn a successful iOS handoff into a save error", async t => {
   t.mock.method(URL, "createObjectURL", () => "blob:preview");
   t.mock.method(URL, "revokeObjectURL", () => {});
   const h = setup({ userAgent: "iPhone", directDownload() {} });
@@ -219,10 +228,10 @@ test("manual preview failure after iOS handoff reports fallback error and permit
   h.image.dispatchEvent(new Event("error"));
   const tree = h.render();
   assert.equal(tree.props.children[2], null);
-  assert.equal(tree.props.children[1].props.children, "이미지 저장에 실패했어요. 다시 시도해주세요.");
+  assert.equal(tree.props.children[1], false);
   assert.equal(tree.props.children[0].props.disabled, false);
   assert.deepEqual(h.events.filter(e => e.name !== "result_image_save_click").map(e => [e.name, e.properties.save_method]), [
-    ["result_image_save_success", "download"], ["result_image_save_error", "preview_fallback"],
+    ["result_image_save_success", "download"],
   ]);
   await tree.props.children[0].props.onClick();
   assert.equal(h.generations, 2);
@@ -230,24 +239,44 @@ test("manual preview failure after iOS handoff reports fallback error and permit
   h.unmount();
 });
 
-test("direct server anchor uses attachment route, safe filename and only public query values", () => {
-  let clicks = 0, removed = 0;
-  const link = { click() { clicks++; }, remove() { removed++; } };
-  const h = createHarness({ document: { createElement: () => link, body: { appendChild() {} } } });
-  const resultValue = result(h);
-  const { downloadServerResultImage, resultImageFilename } = h.load("src/lib/resultImageFile.ts");
-  downloadServerResultImage(resultValue);
-  assert.equal(clicks, 1);
-  assert.equal(removed, 1);
-  const url = new URL(link.href, "https://example.invalid");
-  assert.equal(url.pathname, "/api/result-image/download");
-  assert.deepEqual([...new Set(url.searchParams.keys())], ["main_type", "tag"]);
-  assert.equal(url.searchParams.get("main_type"), resultValue.mainResult.id);
-  assert.equal(link.download, resultImageFilename(resultValue.mainResult.name));
-  assert.equal(link.target, "_blank");
-  link.click = () => { throw new Error("blocked"); };
-  assert.throws(() => downloadServerResultImage(resultValue), /blocked/);
-  assert.equal(removed, 2);
+test("iOS reserves a blank window with no opener and detects blocked popups", () => {
+  const h = createHarness();
+  const view = { opener: h.window };
+  h.window.open = (url, target) => {
+    assert.equal(url, "about:blank");
+    assert.equal(target, "_blank");
+    return view;
+  };
+  const { openResultImageWindow } = h.load("src/lib/resultImageFile.ts");
+  assert.equal(openResultImageWindow(), view);
+  assert.equal(view.opener, null);
+  h.window.open = () => null;
+  assert.equal(openResultImageWindow(), null);
+});
+
+test("iOS request failure closes the reserved window and records only error", async () => {
+  const h = setup({ userAgent: "iPhone", directDownload() {}, generate() { throw new Error("IMAGE_REQUEST_FAILED"); } });
+  await h.load("src/lib/analytics.ts").initializeAnalytics();
+  await h.render().props.children[0].props.onClick();
+  assert.equal(h.imageWindow.closed, true);
+  assert.equal(h.imageWindow.url, undefined);
+  assert.equal(h.render().props.children[1].props.role, "alert");
+  assert.deepEqual(h.events.map(e => e.name), ["result_image_save_click", "result_image_save_error"]);
+  assert.equal(h.events.at(-1).properties.save_method, "download");
+});
+
+test("iOS navigation failure falls back to the same PNG preview", async t => {
+  t.mock.method(URL, "createObjectURL", () => "blob:preview");
+  t.mock.method(URL, "revokeObjectURL", () => {});
+  const h = setup({ userAgent: "iPhone", directDownload() {}, handoff() { throw new Error("blocked"); } });
+  await h.load("src/lib/analytics.ts").initializeAnalytics();
+  await h.render().props.children[0].props.onClick(); h.render(); h.image.load();
+  assert.equal(h.imageWindow.closed, true);
+  assert.equal(h.generations, 1);
+  assert.equal(h.render().props.children[1], false);
+  assert.deepEqual(h.events.map(e => e.name), ["result_image_save_click", "result_image_save_success"]);
+  assert.equal(h.events.at(-1).properties.save_method, "preview_fallback");
+  h.unmount();
 });
 
 test("iOS generation/preload errors and URL failure never open a view and allow retry", async t => {

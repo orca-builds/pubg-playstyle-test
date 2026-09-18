@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ScoringResult } from "@/lib/scoring";
 import { trackEvent } from "@/lib/analytics";
-import { downloadResultImage, downloadServerResultImage, isIOSBrowser, resultImageFilename } from "@/lib/resultImageFile";
+import { downloadResultImage, openResultImageWindow, isIOSBrowser, resultImageFilename } from "@/lib/resultImageFile";
 
 type Props = { result: ScoringResult; attemptId: string; disabled?: boolean };
 
@@ -46,7 +46,7 @@ function ResultImageSaveButton({ result, attemptId, disabled = false }: Props) {
       clearTimeout(timer);
       // iOS success means a visible, loaded image is available for saving.
       // The browser cannot confirm whether the user saved it to Photos.
-      if (!success || !successRecorded.current) {
+      if (!successRecorded.current) {
         trackEvent(success ? "result_image_save_success" : "result_image_save_error", { ...properties, save_method: "preview_fallback" });
         if (success) successRecorded.current = true;
       }
@@ -54,7 +54,7 @@ function ResultImageSaveButton({ result, attemptId, disabled = false }: Props) {
         if (prepared.current) URL.revokeObjectURL(prepared.current);
         prepared.current = null;
         setImageUrl(null);
-        setFailed(true);
+        setFailed(!successRecorded.current);
       }
     }
     const loaded = () => finish(Boolean(view?.open && image?.complete && image.naturalWidth > 0 && image.naturalHeight > 0));
@@ -95,24 +95,33 @@ function ResultImageSaveButton({ result, attemptId, disabled = false }: Props) {
     const needsImageView = isIOSBrowser();
     setIOS(needsImageView);
     trackEvent("result_image_save_click", properties);
+    let imageWindow: Window | null = null;
     try {
-      let handedOff = false;
       if (needsImageView) {
         try {
-          downloadServerResultImage(result);
-          handedOff = true;
+          imageWindow = openResultImageWindow();
         } catch { /* A detectable handoff failure automatically opens the preview below. */ }
       }
       const { createResultImage } = await import("@/lib/createResultImage");
       const blob = await createResultImage(result);
-      if (!mounted.current) return;
+      if (!mounted.current) {
+        imageWindow?.close();
+        return;
+      }
       const filename = resultImageFilename(result.mainResult.name);
       if (needsImageView) {
         const url = URL.createObjectURL(blob);
         prepared.current = url;
+        let handedOff = false;
+        try {
+          if (imageWindow && !imageWindow.closed) {
+            imageWindow.location.replace(url);
+            handedOff = true;
+          }
+        } catch { imageWindow?.close(); }
         if (handedOff) {
           setFallbackUrl(url);
-          // PNG validation + handoff only. iOS may silently ignore it; Files is unobservable.
+          // The validated PNG is handed to the image window; Photos/Files save is unobservable.
           trackEvent("result_image_save_success", { ...properties, save_method: "download" });
           successRecorded.current = true;
         } else setImageUrl(url);
@@ -122,6 +131,7 @@ function ResultImageSaveButton({ result, attemptId, disabled = false }: Props) {
       // Success confirms server PNG + browser handoff, not a completed Files/Photos save.
       trackEvent("result_image_save_success", properties);
     } catch {
+      imageWindow?.close();
       if (!mounted.current) return;
       if (prepared.current) URL.revokeObjectURL(prepared.current);
       prepared.current = null;
