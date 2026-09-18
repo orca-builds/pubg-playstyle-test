@@ -384,7 +384,7 @@ export default function TestRunner() {
                 </button>
               </nav>
             )}
-            <button ref={restartButton} disabled={isNavigating || isStarting} type="button" className="min-h-11 w-full rounded-lg px-4 py-2 text-sm text-slate-500 underline underline-offset-4 hover:text-slate-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700" onClick={() => {
+            <button ref={restartButton} disabled={isNavigating || isStarting} type="button" className="mx-auto block min-h-11 w-fit rounded-lg px-4 py-2 text-sm text-slate-500 underline underline-offset-4 hover:text-slate-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700" onClick={() => {
               setConfirmRestart(true);
             }}>
               처음부터 다시하기
