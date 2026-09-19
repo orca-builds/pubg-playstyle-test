@@ -100,7 +100,7 @@ function setup(options = {}) {
         calls.push("analytics"); tracking.trackTestComplete(...args);
       },
       loadingTiming: h.load("src/lib/loadingTiming.ts").loadingTiming,
-      router: { push: value => { calls.push("navigate"); state.route = value; } },
+      router: { replace: value => { calls.push("navigate"); state.route = value; } },
     };
     return new Function("d", `const { ${Object.keys(dependencies).join(",")} } = d; ${handleNext}; return handleNext;`)(dependencies);
   }

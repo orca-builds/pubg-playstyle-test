@@ -138,11 +138,14 @@ test("real Q24 handler stays busy throughout drain and complete; failure release
 test("landing shows the common overlay during route transition and blocks repeated CTA navigation", async () => {
   let pending = false, pushes = 0;
   const h = createHarness({ mocks: {
-    react: { useEffect() {}, useTransition: () => [pending, callback => { pending = true; callback(); }] },
+    react: { useEffect() {}, useState: value => [value, () => {}], useRef: value => ({ current: value }),
+      useTransition: () => [pending, callback => { pending = true; callback(); }] },
     "next/navigation": { useRouter: () => ({ push: path => { assert.equal(path, "/test"); pushes++; } }) },
   } });
   await h.load("src/lib/analytics.ts").initializeAnalytics();
   const Landing = h.load("src/components/LandingContent.tsx").default;
+  const progress = h.load("src/lib/testProgress.ts");
+  progress.saveAttempt(h.window.localStorage, progress.createAttempt("existing"));
   const render = () => nodes(Landing());
   let tree = render();
   let link = tree.find(node => node.props?.href === "/test");

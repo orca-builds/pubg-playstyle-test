@@ -31,9 +31,10 @@ export default function ResultContent({ snapshot, onStartTest, onRetryLoad, isSt
         {!missing && <p role="alert" className="leading-relaxed text-slate-600">
           {snapshot.status === "error" ? "브라우저 저장 공간을 확인하거나 테스트를 다시 진행해주세요." : "저장된 결과가 유효하지 않습니다. 테스트를 다시 진행해주세요."}
         </p>}
-        <button type="button" onClick={onStartTest} className={`${buttonClass} bg-blue-700 text-white hover:bg-blue-800`}>
+        <button type="button" onClick={onStartTest} disabled={isStarting} className={`${buttonClass} bg-blue-700 text-white hover:bg-blue-800`}>
           {missing ? "테스트 시작하기" : "테스트 다시 시작"}
         </button>
+        {startError && <p role="alert" className="text-sm text-red-700">{startError}</p>}
         {snapshot.status === "error" && <button type="button" onClick={onRetryLoad} className={`${buttonClass} border border-slate-300 text-slate-700`}>결과 다시 불러오기</button>}
       </section>
     );

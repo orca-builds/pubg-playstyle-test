@@ -2,6 +2,7 @@ import { calculateScore } from "@/lib/scoring";
 import type { ScoringResult } from "@/lib/scoring";
 import { restoreAttempt, TEST_STORAGE_KEY } from "@/lib/testProgress";
 import type { CompletedAttempt } from "@/types/testProgress";
+import { bindResultHistory, readResultHistory } from "@/lib/resultHistory";
 
 export type ResultSnapshot =
   | { status: "initializing" }
@@ -39,7 +40,7 @@ export function resolveResultSnapshot(raw: string | null): ResultSnapshot {
 // 같은 저장값에는 같은 객체를 반환해 불필요한 재렌더링과 재계산을 막습니다.
 export function getResultSnapshot(): ResultSnapshot {
   try {
-    const raw = window.localStorage.getItem(TEST_STORAGE_KEY);
+    const raw = readResultHistory();
     if (raw !== cachedRaw) {
       cachedSnapshot = resolveResultSnapshot(raw);
       cachedRaw = raw;
@@ -58,16 +59,19 @@ export function prepareResultSnapshot(progress: CompletedAttempt, result: Scorin
 }
 
 export function subscribeToResult(listener: () => void) {
+  bindResultHistory();
   listeners.add(listener);
   const onStorage = (event: StorageEvent) => {
     if (event.key === TEST_STORAGE_KEY || event.key === null) listener();
   };
   window.addEventListener("storage", onStorage);
   window.addEventListener("pageshow", listener);
+  window.addEventListener("popstate", listener);
   return () => {
     listeners.delete(listener);
     window.removeEventListener("storage", onStorage);
     window.removeEventListener("pageshow", listener);
+    window.removeEventListener("popstate", listener);
   };
 }
 

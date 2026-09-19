@@ -20,7 +20,11 @@ export function memoryStorage() {
 }
 
 export function createHarness(options = {}) {
+  const browserEvents = new EventTarget();
   const window = options.ssr ? undefined : {
+    addEventListener: browserEvents.addEventListener.bind(browserEvents),
+    removeEventListener: browserEvents.removeEventListener.bind(browserEvents),
+    dispatchEvent: browserEvents.dispatchEvent.bind(browserEvents),
     localStorage: options.localStorage ?? memoryStorage(),
     sessionStorage: options.sessionStorage ?? memoryStorage(),
     location: { href: options.href ?? "https://example.invalid/" },

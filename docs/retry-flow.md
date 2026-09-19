@@ -5,8 +5,9 @@ startDatabaseAttempt(true)를 호출한다. visitorContext의 방문자/현재 �
 현재 questionSet 및 QUESTION_ORDER_KEY를 그대로 사용한다.
 
 새 서버 ID/token을 받은 뒤 credential을 쓰고 빈 progress를 마지막으로 저장한다.
-이때 이전 로컬 완료 답변과 완료 시각이 새 progress로 교체된다. resultSnapshot은 progress의
-저장 문자열이 바뀌면 이전 캐시를 버린다. React는 이동이 끝날 때까지 이전 결과만 화면에 유지한다.
+발급 전에 이전 완료 답변과 완료 시각을 sessionStorage에 보존한다. 보존 실패 시 발급하지 않는다.
+활성 progress만 새 진행으로 교체한다. 결과 history 항목은 별도의 무작위 키로 완료 답변에 연결되며,
+resultSnapshot은 해당 답변에서 결과를 복원한다. React는 이동이 끝날 때까지 이전 결과를 유지한다.
 이전 answer-sync/completion-pending 보조 저장값은 commit 이후 제거한다. 제거 실패 시에도
 각 보조 저장값은 attemptId를 비교하므로 새 시도에는 적용되지 않는다.
 이전 analytics의 attempt별 기록과 visitor/attribution/session은 삭제하지 않는다.
@@ -29,6 +30,11 @@ DB 요청은 기존 start POST 한 종류다. 이전 test_attempts/answers에 up
 서버는 새 UUID와 token/hash를 만들고 is_retry=true, is_completed=false,
 last_question_index=0으로 새 행만 insert한다. 새 답변은 첫 선택을 저장하기 전까지 0행이다.
 이번 작업에 추가 migration은 없다.
+
+완료 후 랜딩 CTA는 startDatabaseAttempt(false)로 새 테스트를 시작한다. cta_click 의미를
+유지하며 retry_click은 기록하지 않는다. 미완료 상태가 있으면 기존 진행으로 이동한다.
+단순 `/test` 복귀는 완료 상태를 새 attempt로 덮어쓰지 않고 랜딩으로 돌려보낸다.
+뒤로가기/앞으로가기 및 Android 재QA는 [상태 복원 QA](completed-navigation-qa.md)를 참고한다.
 
 ## 수동 QA
 

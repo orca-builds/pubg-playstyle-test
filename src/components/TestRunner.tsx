@@ -7,7 +7,7 @@ import LoadingOverlay from "@/components/LoadingOverlay";
 import { loadingTiming } from "@/lib/loadingTiming";
 import { orderedQuestions } from "@/data/questionOrder";
 import {
-  canGoNext, finishAttempt, isAttemptExpired, moveQuestion,
+  canGoNext, finishAttempt, moveQuestion,
   restoreAttempt, saveAttempt, selectAnswer, TEST_STORAGE_KEY,
 } from "@/lib/testProgress";
 import type { InProgressAttempt } from "@/types/testProgress";
@@ -80,6 +80,13 @@ export default function TestRunner() {
     try {
       const restored = restoreAttempt(window.localStorage.getItem(TEST_STORAGE_KEY));
       setError("");
+      if (restored.kind === "completed") {
+        activeAttempt.current = null;
+        setProgress(null);
+        setScreen("loading");
+        router.replace("/");
+        return;
+      }
       if (hasPendingDatabaseStart() || hasRetryRequest()) {
         startNew("", true);
       } else if (restored.kind === "in_progress") {
@@ -99,18 +106,21 @@ export default function TestRunner() {
         setScreen(restored.progress.answers.length === 0 && !pendingCompletion ? "questions" : "resume");
       } else {
         const messages = {
-          expired: "이전 테스트의 시작 후 24시간이 지나 새 테스트를 시작합니다.",
-          version_mismatch: "테스트가 업데이트되어 새 테스트를 시작합니다.",
-          order_mismatch: "질문 순서가 변경되어 새 테스트를 시작합니다.",
-          invalid: "이전 진행 상태를 복원할 수 없어 새 테스트를 시작합니다.",
-          empty: "", completed: "",
+          expired: "이전 테스트의 시작 후 24시간이 지났습니다. 새 테스트를 시작해주세요.",
+          version_mismatch: "테스트가 업데이트되었습니다. 새 테스트를 시작해주세요.",
+          order_mismatch: "질문 순서가 변경되었습니다. 새 테스트를 시작해주세요.",
+          invalid: "이전 진행 상태를 복원할 수 없습니다. 새 테스트를 시작해주세요.",
+          empty: "",
         };
-        startNew(messages[restored.kind], restored.kind === "completed");
+        setProgress(null);
+        setScreen("loading");
+        setNeedsNewStart(true);
+        setError(messages[restored.kind] || "새 테스트를 시작해주세요.");
       }
     } catch {
       setError("저장된 진행 상태를 읽지 못했습니다. 브라우저 저장 공간을 허용한 뒤 다시 시도해주세요.");
     }
-  }, [startNew]);
+  }, [startNew, router]);
 
   useEffect(() => {
     mounted.current = true;
@@ -121,11 +131,16 @@ export default function TestRunner() {
     const handlePageShow = (event: PageTransitionEvent) => {
       if (event.persisted) initialize();
     };
+    const handlePopState = () => {
+      if (window.location.pathname === "/test") initialize();
+    };
     window.addEventListener("pageshow", handlePageShow);
+    window.addEventListener("popstate", handlePopState);
     return () => {
       active = false;
       mounted.current = false;
       window.removeEventListener("pageshow", handlePageShow);
+      window.removeEventListener("popstate", handlePopState);
     };
   }, [initialize]);
 
@@ -151,8 +166,16 @@ export default function TestRunner() {
   function ensureFresh() {
     if (startLock.current || restartLock.current) return false;
     if (!progress) return false;
-    if (isAttemptExpired(progress.startedAt)) {
-      startNew("테스트 시작 후 24시간이 지나 새 테스트를 시작합니다.");
+    try {
+      const saved = restoreAttempt(window.localStorage.getItem(TEST_STORAGE_KEY));
+      if (saved.kind !== "in_progress" || saved.progress.attemptId !== progress.attemptId) {
+        setProgress(null);
+        setScreen("loading");
+        router.replace("/");
+        return false;
+      }
+    } catch {
+      setError("저장된 진행 상태를 읽지 못했습니다. 브라우저 저장 공간을 확인해주세요.");
       return false;
     }
     let hasCredential = false;
@@ -216,6 +239,7 @@ export default function TestRunner() {
 
   async function handleRestart() {
     if (restartLock.current || startLock.current || completionLock.current || !progress) return;
+    if (!ensureFresh()) return;
     restartLock.current = true;
     setIsRestarting(true);
     setError("");
@@ -275,7 +299,7 @@ export default function TestRunner() {
       setIsNavigating(true);
       setError("");
       if (!await loadingTiming.waitForMinimum() || !mounted.current) return;
-      router.push("/result");
+      router.replace("/result");
     } catch {
       completionLock.current = false;
       if (mounted.current) {

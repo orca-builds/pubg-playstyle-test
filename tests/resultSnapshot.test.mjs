@@ -196,7 +196,7 @@ function completionHandler({ failSave = false } = {}) {
     trackTestComplete: loadSource("src/lib/testAnalytics.ts").trackTestComplete,
     setIsNavigating: () => {}, setError: () => {},
     loadingTiming: loadSource("src/lib/loadingTiming.ts").loadingTiming,
-    router: { push: (href) => {
+    router: { replace: (href) => {
       assert.equal(href, "/result");
       assert.equal(store.getResultSnapshot().attemptId, "handler");
       events.push("navigate");

@@ -25,6 +25,24 @@ export default function ResultPreview() {
   const [startError, setStartError] = useState("");
   const [previousResult, setPreviousResult] = useState<ResultSnapshot | null>(null);
 
+  useEffect(() => {
+    const restoreView = () => {
+      if (window.location.pathname !== "/result") return;
+      retrying.current = false;
+      sharing.current = false;
+      setIsStarting(false);
+      setIsSharing(false);
+      setPreviousResult(null);
+      setStartError("");
+    };
+    window.addEventListener("pageshow", restoreView);
+    window.addEventListener("popstate", restoreView);
+    return () => {
+      window.removeEventListener("pageshow", restoreView);
+      window.removeEventListener("popstate", restoreView);
+    };
+  }, []);
+
   async function handleShare() {
     if (sharing.current || retrying.current) return;
     const displayed = previousResult ?? snapshot;
@@ -48,16 +66,14 @@ export default function ResultPreview() {
   async function handleStartTest() {
     if (retrying.current || sharing.current) return;
     retrying.current = true;
-    if (snapshot.status !== "ready") {
-      router.push("/test");
-      return;
-    }
     setPreviousResult(snapshot);
     setIsStarting(true);
     setStartError("");
-    trackRetry({ attemptId: snapshot.attemptId, testVersion: snapshot.result.testVersion });
+    if (snapshot.status === "ready") {
+      trackRetry({ attemptId: snapshot.attemptId, testVersion: snapshot.result.testVersion });
+    }
     try {
-      await startDatabaseAttempt(true);
+      await startDatabaseAttempt(snapshot.status === "ready");
       // Keep the completed result visible until navigation, even after storage changes.
       router.push("/test");
     } catch {

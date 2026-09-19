@@ -7,6 +7,7 @@ import { clearRetryRequest, trackTestStart } from "@/lib/testAnalytics";
 import type { InProgressAttempt } from "@/types/testProgress";
 import { ANSWER_SYNC_KEY, retainAnswerQueue } from "@/lib/syncDatabaseAnswers";
 import { COMPLETION_PENDING_KEY } from "@/lib/completeDatabaseAttempt";
+import { archiveCompletedResult } from "@/lib/resultHistory";
 
 let inFlight: Promise<InProgressAttempt> | null = null;
 // If persistence fails after issuance, a manual retry reuses the issued credential.
@@ -26,6 +27,7 @@ export function startDatabaseAttempt(isRetry = false): Promise<InProgressAttempt
 async function start(isRetry: boolean): Promise<InProgressAttempt> {
   try {
     const storage = window.localStorage;
+    archiveCompletedResult();
     // Check write access before creating a DB row. Do not use best-effort analytics storage.
     const previous = storage.getItem(CREDENTIAL_STORAGE_KEY);
     if (previous === null) {

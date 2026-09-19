@@ -1,17 +1,21 @@
 "use client";
 
-import { useEffect, useTransition } from "react";
+import { useEffect, useState, useRef, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import LoadingOverlay from "@/components/LoadingOverlay";
 import { trackEvent } from "@/lib/analytics";
 import { getVisitorContext } from "@/lib/visitorContext";
+import { restoreAttempt, TEST_STORAGE_KEY } from "@/lib/testProgress";
+import { startDatabaseAttempt } from "@/lib/startDatabaseAttempt";
 
 const testMeta = ["24개 질문", "정답은 없어요"];
 
 export default function LandingContent() {
   const router = useRouter();
   const [isNavigating, startTransition] = useTransition();
+  const [startError, setStartError] = useState("");
+  const starting = useRef(false);
   useEffect(() => {
     const context = getVisitorContext();
     if (context) trackEvent("landing_view", {}, {
@@ -36,11 +40,25 @@ export default function LandingContent() {
           trackEvent("cta_click");
         }} onNavigate={(event) => {
           event.preventDefault();
-          if (!isNavigating) startTransition(() => router.push("/test"));
+          if (isNavigating || starting.current) return;
+          starting.current = true;
+          setStartError("");
+          startTransition(async () => {
+            try {
+              const saved = restoreAttempt(window.localStorage.getItem(TEST_STORAGE_KEY));
+              if (saved.kind !== "in_progress") await startDatabaseAttempt();
+              router.push("/test");
+            } catch {
+              setStartError("테스트를 시작하지 못했습니다. 연결 상태와 저장 공간을 확인하고 다시 시도해주세요.");
+            } finally {
+              starting.current = false;
+            }
+          });
         }}
           className="mx-auto flex min-h-12 w-full max-w-md items-center justify-center whitespace-nowrap rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white transition-[scale,background-color] duration-150 ease-out hover:bg-blue-800 motion-safe:hover:scale-[1.015] motion-safe:active:scale-[0.98] motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 sm:min-h-14 sm:text-lg">
           내 플레이 유형 확인하기
         </Link>
+        {startError && <p role="alert" className="text-sm text-red-700">{startError}</p>}
       </div>
     </main>
   );
